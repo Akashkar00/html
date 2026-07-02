@@ -1,0 +1,2390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>Understanding Context Windows in Large Language Models</title>
+<style>
+/* ==========================================================================
+   DESIGN SYSTEM — CSS VARIABLES
+   ========================================================================== */
+:root{
+  --bg-0:#05070d;
+  --bg-1:#070912;
+  --bg-2:#0b0e1a;
+  --blue:#3b82f6;
+  --cyan:#22d3ee;
+  --purple:#a855f7;
+  --pink:#ec4899;
+  --white:#f5f7ff;
+  --dim:#9aa4c2;
+  --dimmer:#6b7394;
+  --glass-bg:rgba(255,255,255,0.045);
+  --glass-border:rgba(255,255,255,0.10);
+  --glass-bg-strong:rgba(255,255,255,0.07);
+  --grad-main:linear-gradient(120deg,var(--blue),var(--cyan) 45%,var(--purple) 100%);
+  --grad-soft:linear-gradient(120deg,rgba(59,130,246,0.25),rgba(34,211,238,0.2) 45%,rgba(168,85,247,0.25) 100%);
+  --shadow-glow:0 0 60px -10px rgba(59,130,246,0.35);
+  --ease:cubic-bezier(.16,.84,.44,1);
+  --ease-soft: cubic-bezier(.22,.61,.36,1);
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ==========================================================================
+   RESET
+   ========================================================================== */
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+html{ scroll-behavior:smooth; }
+html,body{
+  width:100%; height:100%;
+  background:var(--bg-0);
+  color:var(--white);
+  font-family:var(--font);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+ul{ list-style:none; }
+button{ font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; }
+svg{ display:block; overflow:visible; }
+::selection{ background:var(--purple); color:#fff; }
+
+/* Scrollbar (webkit) */
+#main::-webkit-scrollbar{ width:0px; }
+
+/* ==========================================================================
+   BACKGROUND CANVAS
+   ========================================================================== */
+#bg-canvas{
+  position:fixed; inset:0; z-index:0;
+  width:100%; height:100%;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 15%, rgba(59,130,246,0.12), transparent 60%),
+    radial-gradient(ellipse 70% 60% at 85% 80%, rgba(168,85,247,0.10), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 60% 40%, rgba(34,211,238,0.06), transparent 60%),
+    var(--bg-0);
+}
+.grain{
+  position:fixed; inset:0; z-index:1; pointer-events:none;
+  opacity:0.035; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ==========================================================================
+   LAYOUT SHELL — NAV, PROGRESS, ARROWS
+   ========================================================================== */
+#main{
+  position:relative; z-index:2;
+  height:100vh; width:100%;
+  overflow-y:scroll; overflow-x:hidden;
+  scroll-snap-type:y mandatory;
+  scroll-behavior:smooth;
+}
+section.slide{
+  position:relative;
+  width:100%; min-height:100vh; height:100vh;
+  scroll-snap-align:start; scroll-snap-stop:always;
+  display:flex; align-items:center; justify-content:center;
+  padding:6vh 6vw;
+  overflow:hidden;
+}
+.slide-inner{
+  position:relative; z-index:2;
+  width:100%; max-width:1180px;
+  margin:0 auto;
+  display:flex; flex-direction:column; align-items:center; gap:28px;
+  text-align:center;
+}
+
+/* Progress bar (top) */
+.progress-bar{
+  position:fixed; top:0; left:0; right:0; height:3px; z-index:50;
+  background:rgba(255,255,255,0.06);
+}
+.progress-fill{
+  height:100%; width:0%;
+  background:var(--grad-main);
+  box-shadow:0 0 12px 1px rgba(34,211,238,0.6);
+  transition:width .5s var(--ease);
+}
+
+/* Nav dots (right side) */
+.nav-dots{
+  position:fixed; right:22px; top:50%; transform:translateY(-50%);
+  z-index:50; display:flex; flex-direction:column; gap:9px;
+}
+.nav-dots button{
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(255,255,255,0.18);
+  transition:all .35s var(--ease);
+  position:relative;
+}
+.nav-dots button::after{
+  content:attr(data-label);
+  position:absolute; right:16px; top:50%; transform:translateY(-50%);
+  font-size:10.5px; letter-spacing:.04em; white-space:nowrap;
+  color:var(--dim); opacity:0; transition:opacity .25s var(--ease);
+  background:rgba(10,12,20,0.85); padding:4px 9px; border-radius:6px;
+  border:1px solid var(--glass-border); pointer-events:none;
+}
+.nav-dots button:hover::after{ opacity:1; }
+.nav-dots button.active{
+  width:9px; height:22px; border-radius:5px;
+  background:var(--grad-main);
+  box-shadow:0 0 10px rgba(59,130,246,0.7);
+}
+
+/* Prev / Next arrows */
+.nav-arrows{
+  position:fixed; right:22px; bottom:26px; z-index:50;
+  display:flex; flex-direction:column; gap:10px;
+}
+.nav-arrows button{
+  width:42px; height:42px; border-radius:50%;
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  backdrop-filter:blur(12px);
+  display:flex; align-items:center; justify-content:center;
+  transition:all .25s var(--ease);
+}
+.nav-arrows button:hover{ background:var(--glass-bg-strong); transform:translateY(-2px); border-color:rgba(255,255,255,0.25); }
+.nav-arrows svg{ width:16px; height:16px; stroke:var(--white); }
+
+/* Section indicator (bottom-left) */
+.section-indicator{
+  position:fixed; left:26px; bottom:26px; z-index:50;
+  font-size:12px; letter-spacing:.08em; color:var(--dimmer);
+  font-variant-numeric:tabular-nums;
+  display:flex; align-items:baseline; gap:6px;
+}
+.section-indicator .cur{ color:var(--white); font-size:16px; font-weight:600; }
+.section-indicator .label{
+  margin-left:8px; color:var(--dim); text-transform:uppercase; font-size:10.5px; letter-spacing:.12em;
+}
+
+/* Logo mark top-left */
+.brand{
+  position:fixed; left:26px; top:22px; z-index:50;
+  display:flex; align-items:center; gap:8px;
+  font-size:13px; letter-spacing:.06em; color:var(--dim);
+  text-transform:uppercase;
+}
+.brand span.dot{
+  width:7px; height:7px; border-radius:50%; background:var(--grad-main);
+  box-shadow:0 0 10px rgba(59,130,246,0.8);
+}
+
+/* Scroll hint */
+.scroll-hint{
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+  z-index:49; display:flex; flex-direction:column; align-items:center; gap:6px;
+  color:var(--dimmer); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  opacity:0.8; transition:opacity .4s;
+}
+.scroll-hint .mouse{
+  width:20px; height:32px; border:1.5px solid var(--dim); border-radius:12px;
+  position:relative;
+}
+.scroll-hint .mouse::after{
+  content:''; position:absolute; top:6px; left:50%; width:3px; height:6px;
+  background:var(--cyan); border-radius:2px; transform:translateX(-50%);
+  animation:scrollDot 1.6s infinite;
+}
+@keyframes scrollDot{ 0%{ top:6px; opacity:1;} 70%{ top:18px; opacity:0; } 100%{ top:6px; opacity:0; } }
+body.hide-chrome .nav-arrows,
+body.hide-chrome .nav-dots,
+body.hide-chrome .scroll-hint,
+body.hide-chrome .brand,
+body.hide-chrome .section-indicator{ opacity:0; pointer-events:none; }
+
+/* ==========================================================================
+   TYPOGRAPHY
+   ========================================================================== */
+.eyebrow{
+  font-size:12.5px; letter-spacing:.22em; text-transform:uppercase;
+  color:var(--cyan); font-weight:600;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.eyebrow::before{ content:''; width:16px; height:1px; background:var(--cyan); }
+h1.title{
+  font-size:clamp(2.6rem, 6vw, 5rem); font-weight:800; line-height:1.05;
+  letter-spacing:-0.02em;
+  background:var(--grad-main); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+h2.title{
+  font-size:clamp(2rem, 4.2vw, 3.4rem); font-weight:800; line-height:1.1;
+  letter-spacing:-0.02em; color:var(--white);
+}
+h2.title .grad{
+  background:var(--grad-main); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+p.subtitle{
+  font-size:clamp(1rem, 1.6vw, 1.35rem); color:var(--dim); font-weight:400;
+  max-width:680px; line-height:1.55;
+}
+p.lede{
+  font-size:clamp(0.95rem, 1.3vw, 1.12rem); color:var(--dim); line-height:1.7;
+  max-width:640px;
+}
+.section-num{
+  font-size:12px; color:var(--dimmer); letter-spacing:.18em; font-weight:600;
+}
+
+/* ==========================================================================
+   GLASS CARD SYSTEM
+   ========================================================================== */
+.glass{
+  background:var(--glass-bg);
+  border:1px solid var(--glass-border);
+  border-radius:20px;
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  box-shadow:0 8px 40px -12px rgba(0,0,0,0.5);
+}
+.card{
+  position:relative; padding:22px; border-radius:18px;
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  backdrop-filter:blur(14px);
+  transition:transform .4s var(--ease), border-color .4s, background .4s;
+}
+.card:hover{ transform:translateY(-4px); border-color:rgba(255,255,255,0.22); background:var(--glass-bg-strong); }
+.grad-border{
+  position:relative; border-radius:20px; padding:1px;
+  background:linear-gradient(140deg, rgba(59,130,246,0.55), rgba(255,255,255,0.05) 40%, rgba(168,85,247,0.5));
+}
+.grad-border > div{ border-radius:19px; background:var(--bg-1); height:100%; }
+
+/* Buttons */
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:12px 26px; border-radius:100px; font-size:14px; font-weight:600;
+  letter-spacing:.02em;
+  background:var(--grad-main); color:#04070d;
+  transition:transform .3s var(--ease), box-shadow .3s;
+  box-shadow:0 8px 30px -8px rgba(59,130,246,0.5);
+}
+.btn:hover{ transform:translateY(-2px) scale(1.02); box-shadow:0 12px 34px -6px rgba(59,130,246,0.65); }
+.btn.ghost{
+  background:transparent; color:var(--white);
+  border:1px solid var(--glass-border);
+  box-shadow:none;
+}
+.btn.ghost:hover{ background:var(--glass-bg); }
+
+/* ==========================================================================
+   REVEAL ANIMATION PRIMITIVES (triggered via IntersectionObserver -> .in-view)
+   ========================================================================== */
+[data-reveal]{ opacity:0; transition:opacity .9s var(--ease), transform .9s var(--ease), filter .9s var(--ease); will-change:transform,opacity,filter; }
+[data-reveal="fade-up"]{ transform:translateY(34px); }
+[data-reveal="fade-down"]{ transform:translateY(-34px); }
+[data-reveal="fade-left"]{ transform:translateX(40px); }
+[data-reveal="fade-right"]{ transform:translateX(-40px); }
+[data-reveal="scale"]{ transform:scale(.85); }
+[data-reveal="blur"]{ filter:blur(14px); transform:translateY(14px); }
+.slide.in-view [data-reveal]{ opacity:1; transform:none; filter:blur(0); }
+.slide [data-reveal-delay="1"]{ transition-delay:.08s; }
+.slide [data-reveal-delay="2"]{ transition-delay:.16s; }
+.slide [data-reveal-delay="3"]{ transition-delay:.24s; }
+.slide [data-reveal-delay="4"]{ transition-delay:.32s; }
+.slide [data-reveal-delay="5"]{ transition-delay:.40s; }
+.slide [data-reveal-delay="6"]{ transition-delay:.48s; }
+.slide [data-reveal-delay="7"]{ transition-delay:.56s; }
+.slide [data-reveal-delay="8"]{ transition-delay:.64s; }
+
+/* Floating ambient blobs used across sections */
+.blob{
+  position:absolute; border-radius:50%; filter:blur(60px); z-index:0; pointer-events:none;
+  opacity:.55; animation:floatBlob 14s ease-in-out infinite;
+}
+@keyframes floatBlob{
+  0%,100%{ transform:translate(0,0) scale(1); }
+  50%{ transform:translate(24px,-30px) scale(1.08); }
+}
+
+/* generic pulse / glow */
+@keyframes pulseGlow{
+  0%,100%{ box-shadow:0 0 20px 0px rgba(59,130,246,.45); }
+  50%{ box-shadow:0 0 42px 6px rgba(34,211,238,.55); }
+}
+@keyframes floatY{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-14px); } }
+@keyframes spinSlow{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+@keyframes dashFlow{ to{ stroke-dashoffset:-200; } }
+@keyframes shimmer{ 0%{ background-position:-200% 0; } 100%{ background-position:200% 0; } }
+
+/* ==========================================================================
+   SECTION 1 — HERO
+   ========================================================================== */
+.hero-stage{ width:100%; display:flex; justify-content:center; margin-top:6px; }
+.hero-pulse{ animation:heroPulse 4s ease-in-out infinite; transform-origin:380px 180px; }
+@keyframes heroPulse{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:.85; transform:scale(1.08); } }
+.hero-brain{ animation:floatY 6s ease-in-out infinite; }
+.brain-nodes circle{ animation:nodeBlink 2.4s ease-in-out infinite; }
+.brain-nodes circle:nth-child(2){ animation-delay:.3s; }
+.brain-nodes circle:nth-child(3){ animation-delay:.6s; }
+.brain-nodes circle:nth-child(4){ animation-delay:.9s; }
+@keyframes nodeBlink{ 0%,100%{ opacity:.6; } 50%{ opacity:1; } }
+.token-runner{ offset-rotate:0deg; animation:runPath 3.2s linear infinite; }
+@keyframes runPath{ from{ offset-distance:0%; opacity:0;} 8%{opacity:1;} 92%{opacity:1;} to{ offset-distance:100%; opacity:0; } }
+.hero-cta{ display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:4px; }
+.hero-hint{ font-size:12px; color:var(--dimmer); letter-spacing:.04em; }
+
+/* ==========================================================================
+   SECTION 2 — WHAT IS A CONTEXT WINDOW
+   ========================================================================== */
+.s2-stage{ width:100%; display:flex; justify-content:center; }
+.s2-msg{ opacity:0; }
+.slide.in-view .s2-msg{ animation:s2msgFly 2.6s var(--ease) forwards; }
+@keyframes s2msgFly{
+  0%{ opacity:0; transform:translateX(0); }
+  15%{ opacity:1; transform:translateX(0); }
+  85%{ opacity:1; transform:translateX(360px); }
+  100%{ opacity:0; transform:translateX(420px); }
+}
+.s2-container{ animation:pulseGlow 3s ease-in-out infinite; }
+.s2-fill{ transform-origin:460px 209px; transform:scaleX(0); animation:none; }
+.slide.in-view .s2-fill{ animation:s2fillGrow 2.4s var(--ease-soft) 0.6s forwards; }
+@keyframes s2fillGrow{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+.s2-settled rect{ opacity:0; transform:translateY(6px); }
+.slide.in-view .s2-settled rect{ animation:s2settle .7s var(--ease) forwards; }
+.s2-settled rect:nth-child(1){ animation-delay:.9s; } .s2-settled rect:nth-child(2){ animation-delay:1.1s; }
+.s2-settled rect:nth-child(3){ animation-delay:1.3s; } .s2-settled rect:nth-child(4){ animation-delay:1.5s; }
+.s2-settled rect:nth-child(5){ animation-delay:1.7s; } .s2-settled rect:nth-child(6){ animation-delay:1.9s; }
+@keyframes s2settle{ to{ opacity:1; transform:translateY(0); } }
+.s2-caption{ font-size:14px; color:var(--dim); max-width:560px; }
+
+/* ==========================================================================
+   SECTION 3 — HUMAN MEMORY ANALOGY
+   ========================================================================== */
+.s3-stage{ width:100%; display:flex; justify-content:center; }
+.s3-note{ transform-origin:center; opacity:0; }
+.s3-note rect{ fill:var(--bg); stroke:rgba(0,0,0,0.15); }
+.s3-note line{ stroke:rgba(0,0,0,0.35); stroke-width:2; stroke-linecap:round; }
+.s3-caption{ font-size:14px; color:var(--dim); min-height:20px; transition:opacity .4s; }
+
+/* ==========================================================================
+   SECTION 4 — WHAT LIVES INSIDE
+   ========================================================================== */
+.s4-grid{ position:relative; width:100%; max-width:900px; height:440px; display:flex; align-items:center; justify-content:center; }
+.s4-items{ position:relative; width:100%; height:100%; }
+.s4-item{
+  position:absolute; display:flex; flex-direction:column; align-items:center; gap:8px;
+  width:120px; padding:14px 8px; border-radius:16px;
+  background:var(--glass-bg); border:1px solid var(--glass-border); backdrop-filter:blur(10px);
+  font-size:12px; color:var(--dim); text-align:center;
+  animation:s4converge 1.4s var(--ease-soft) both;
+  animation-delay:calc(var(--i) * 0.12s + .2s);
+}
+.s4-item svg{ width:26px; height:26px; }
+.s4-item:nth-child(1){ top:2%; left:8%; }
+.s4-item:nth-child(2){ top:2%; left:38%; }
+.s4-item:nth-child(3){ top:2%; right:8%; }
+.s4-item:nth-child(4){ top:40%; left:0%; }
+.s4-item:nth-child(5){ top:40%; right:0%; }
+.s4-item:nth-child(6){ bottom:2%; left:8%; }
+.s4-item:nth-child(7){ bottom:2%; left:38%; }
+.s4-item:nth-child(8){ bottom:2%; right:8%; }
+@keyframes s4converge{
+  0%{ opacity:0; transform:translate(var(--tx,0),var(--ty,0)) scale(.6); }
+  100%{ opacity:1; transform:translate(0,0) scale(1); }
+}
+.s4-item:nth-child(1){ --tx:-40px; --ty:-40px; } .s4-item:nth-child(2){ --ty:-50px; }
+.s4-item:nth-child(3){ --tx:40px; --ty:-40px; } .s4-item:nth-child(4){ --tx:-50px; }
+.s4-item:nth-child(5){ --tx:50px; } .s4-item:nth-child(6){ --tx:-40px; --ty:40px; }
+.s4-item:nth-child(7){ --ty:50px; } .s4-item:nth-child(8){ --tx:40px; --ty:40px; }
+.s4-links{ position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+.s4-core{
+  position:absolute; width:130px; height:130px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; z-index:1;
+  background:radial-gradient(circle,rgba(34,211,238,0.16),rgba(59,130,246,0.06) 70%,transparent);
+}
+.s4-core-ring{
+  position:absolute; inset:0; border-radius:50%;
+  border:1.5px solid rgba(34,211,238,0.5);
+  box-shadow:0 0 30px rgba(34,211,238,0.35), inset 0 0 20px rgba(59,130,246,0.25);
+  animation:spinSlow 12s linear infinite, pulseGlow 3s ease-in-out infinite;
+}
+.s4-core-label{ font-weight:700; font-size:14px; text-align:center; line-height:1.3; color:#fff; z-index:2; }
+
+/* ==========================================================================
+   SECTION 5 — UNDERSTANDING TOKENS
+   ========================================================================== */
+.s5-stage{ width:100%; max-width:760px; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.s5-row{ width:100%; display:flex; align-items:center; gap:16px; justify-content:center; flex-wrap:wrap; }
+.s5-tag{ font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dimmer); width:78px; text-align:right; flex-shrink:0; }
+.s5-box{
+  flex:1; max-width:560px; padding:14px 18px; border-radius:14px;
+  background:var(--glass-bg); border:1px solid var(--glass-border); font-size:15px; color:var(--white);
+}
+.s5-arrow{ color:var(--dimmer); font-size:18px; }
+.s5-chip-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width:560px; }
+.s5-chip{
+  padding:7px 12px; border-radius:10px; font-size:13px; font-weight:600;
+  opacity:0; transform:translateY(10px) scale(.8);
+  animation:s5chipIn .5s var(--ease) forwards;
+  color:#04070d;
+}
+@keyframes s5chipIn{ to{ opacity:1; transform:translateY(0) scale(1); } }
+.s5-chip.word{ background:linear-gradient(135deg,#93c5fd,#3b82f6); }
+.s5-chip.token{ background:linear-gradient(135deg,#67e8f9,#22d3ee); }
+.s5-stats{ display:flex; gap:36px; margin-top:6px; }
+.s5-stat{ text-align:center; }
+.s5-stat-num{ font-size:32px; font-weight:800; background:var(--grad-main); -webkit-background-clip:text; background-clip:text; color:transparent; font-variant-numeric:tabular-nums; }
+.s5-stat-label{ font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dimmer); margin-top:4px; }
+
+/* ==========================================================================
+   SECTION 6 — WORDS VS TOKENS (interactive)
+   ========================================================================== */
+.s6-picker{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:760px; }
+.s6-pick{
+  padding:10px 18px; border-radius:100px; font-size:13px;
+  background:var(--glass-bg); border:1px solid var(--glass-border); color:var(--dim);
+  transition:all .3s var(--ease);
+}
+.s6-pick:hover{ color:var(--white); border-color:rgba(255,255,255,.3); }
+.s6-pick.active{ background:var(--grad-main); color:#04070d; font-weight:600; border-color:transparent; }
+.s6-visual{ width:100%; max-width:800px; min-height:130px; padding:30px; display:flex; align-items:center; justify-content:center; }
+.s6-tokens{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+.s6-token-chip{
+  padding:9px 14px; border-radius:10px; font-size:14px; font-weight:600; color:#04070d;
+  opacity:0; transform:scale(.7) translateY(8px);
+  animation:s5chipIn .45s var(--ease) forwards;
+}
+.s6-token-chip.word{ background:linear-gradient(135deg,#93c5fd,#3b82f6); }
+.s6-token-chip.sub{ background:linear-gradient(135deg,#d8b4fe,#a855f7); }
+.s6-token-chip.punct{ background:linear-gradient(135deg,#67e8f9,#22d3ee); }
+.s6-legend{ display:flex; gap:22px; font-size:12px; color:var(--dim); }
+.s6-legend span{ display:flex; align-items:center; gap:6px; }
+.s6-legend i{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+/* ==========================================================================
+   SECTION 7 — PIPELINE
+   ========================================================================== */
+.s7-pipeline{ display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:0; max-width:980px; }
+.s7-stage-node{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  width:130px; padding:18px 10px; border-radius:16px;
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  font-size:12.5px; color:var(--dim); position:relative;
+  opacity:0; transform:translateY(16px);
+}
+.slide.in-view .s7-stage-node{ animation:s7nodeIn .6s var(--ease) forwards; }
+.s7-stage-node[data-i="0"]{ animation-delay:.1s !important; } .s7-stage-node[data-i="1"]{ animation-delay:.4s !important; }
+.s7-stage-node[data-i="2"]{ animation-delay:.7s !important; } .s7-stage-node[data-i="3"]{ animation-delay:1.0s !important; }
+.s7-stage-node[data-i="4"]{ animation-delay:1.3s !important; } .s7-stage-node[data-i="5"]{ animation-delay:1.6s !important; }
+@keyframes s7nodeIn{ to{ opacity:1; transform:translateY(0); } }
+.s7-stage-node.active{ border-color:rgba(34,211,238,.6); box-shadow:0 0 24px rgba(34,211,238,.3); background:var(--glass-bg-strong); }
+.s7-icon{ font-size:26px; filter:drop-shadow(0 0 10px rgba(59,130,246,0.5)); }
+.s7-connector{ width:36px; height:2px; background:linear-gradient(90deg,rgba(59,130,246,.2),rgba(34,211,238,.6)); position:relative; opacity:0; }
+.slide.in-view .s7-connector{ animation:s7connIn .5s var(--ease) forwards; }
+.s7-connector::after{
+  content:''; position:absolute; top:-3px; left:0; width:8px; height:8px; border-radius:50%;
+  background:#22d3ee; box-shadow:0 0 8px #22d3ee;
+  animation:s7dot 1.8s linear infinite; opacity:0;
+}
+.slide.in-view .s7-connector::after{ animation:s7dot 1.8s linear infinite; opacity:1; }
+@keyframes s7connIn{ to{ opacity:1; } }
+@keyframes s7dot{ 0%{ left:0; opacity:0;} 10%{opacity:1;} 90%{opacity:1;} 100%{ left:100%; opacity:0; } }
+
+/* ==========================================================================
+   SECTION 8 — LIFECYCLE TIMELINE
+   ========================================================================== */
+.s8-stage{ width:100%; max-width:820px; display:flex; flex-direction:column; align-items:center; gap:34px; }
+.s8-bar-wrap{ width:100%; max-width:560px; }
+.s8-bar{ width:100%; height:20px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); overflow:hidden; }
+.s8-bar-fill{ height:100%; width:0%; background:var(--grad-main); border-radius:10px; transition:width 1.1s var(--ease-soft); box-shadow:0 0 16px rgba(34,211,238,0.5); }
+.s8-bar-label{ text-align:center; font-size:12.5px; color:var(--dimmer); margin-top:10px; }
+.s8-timeline{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; max-width:760px; min-height:56px; }
+.s8-msg-chip{
+  padding:8px 14px; border-radius:10px; font-size:12.5px; background:var(--glass-bg); border:1px solid var(--glass-border); color:var(--dim);
+  opacity:0; transform:translateX(30px) scale(.85);
+  animation:s8in .5s var(--ease) forwards;
+}
+.s8-msg-chip.expiring{ animation:s8out .6s var(--ease) forwards; }
+@keyframes s8in{ to{ opacity:1; transform:translateX(0) scale(1); } }
+@keyframes s8out{ to{ opacity:0; transform:translateX(-40px) scale(.7); } }
+
+/* ==========================================================================
+   SECTION 9 — CONVEYOR BELT / WINDOW FULL
+   ========================================================================== */
+.s9-stage{ position:relative; width:100%; max-width:820px; padding:36px 0 46px; overflow:hidden; }
+.s9-belt-window{ position:relative; height:70px; margin:0 40px; overflow:hidden; border-radius:14px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); }
+.s9-belt-track{ position:absolute; top:0; left:0; height:100%; display:flex; align-items:center; gap:14px; padding:0 14px; will-change:transform; }
+.s9-belt-item{
+  flex-shrink:0; padding:10px 16px; border-radius:10px; font-size:12.5px; white-space:nowrap;
+  background:linear-gradient(135deg,rgba(59,130,246,.25),rgba(34,211,238,.2)); border:1px solid rgba(255,255,255,.15); color:var(--white);
+}
+.s9-belt-item.leaving{ opacity:0.15; }
+.s9-belt-base{
+  height:10px; margin:8px 40px 0; border-radius:6px;
+  background:repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 10px, transparent 10px 20px);
+}
+.s9-drop-zone{ position:absolute; left:0; top:36px; font-size:11px; color:var(--dimmer); letter-spacing:.04em; }
+
+/* ==========================================================================
+   SECTION 10 — REAL EXAMPLE
+   ========================================================================== */
+.s10-cases{ display:flex; gap:28px; flex-wrap:wrap; justify-content:center; width:100%; max-width:980px; }
+.s10-case{ flex:1; min-width:300px; max-width:440px; padding:22px; border-radius:20px; background:var(--glass-bg); border:1px solid var(--glass-border); }
+.s10-case-label{ font-size:12.5px; font-weight:700; letter-spacing:.04em; margin-bottom:14px; }
+.s10-case-label.ok{ color:#4ade80; }
+.s10-case-label.bad{ color:#f87171; }
+.s10-chat{ display:flex; flex-direction:column; gap:10px; text-align:left; }
+.s10-bubble{ padding:10px 14px; border-radius:12px; font-size:13px; max-width:90%; line-height:1.4; }
+.s10-bubble.user{ align-self:flex-end; background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.35); }
+.s10-bubble.ai{ align-self:flex-start; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); min-height:18px; }
+.s10-bubble.muted{ opacity:.75; }
+.s10-bubble.faded{ opacity:.3; }
+.s10-bubble.highlight{ border-color:rgba(74,222,128,0.5); box-shadow:0 0 18px rgba(74,222,128,0.15); }
+.s10-bubble.error{ border-color:rgba(248,113,113,0.5); box-shadow:0 0 18px rgba(248,113,113,0.15); color:#fca5a5; }
+.s10-dots{ text-align:center; font-size:11px; color:var(--dimmer); }
+.s10-fade-marker{ text-align:center; font-size:10.5px; color:#f87171; opacity:.7; letter-spacing:.04em; }
+
+/* ==========================================================================
+   SECTION 11 — WINDOW SIZES
+   ========================================================================== */
+.s11-bars{ width:100%; max-width:720px; display:flex; flex-direction:column; gap:22px; }
+.s11-bar-row{ display:grid; grid-template-columns:90px 1fr 220px; align-items:center; gap:16px; }
+.s11-bar-label{ font-size:14px; font-weight:700; text-align:right; color:var(--white); }
+.s11-bar-track{ height:14px; border-radius:8px; background:rgba(255,255,255,0.06); overflow:hidden; }
+.s11-bar-fill{ height:100%; width:0; border-radius:8px; background:var(--grad-main); box-shadow:0 0 14px rgba(34,211,238,0.4); transition:width 1.4s var(--ease-soft); }
+.slide.in-view .s11-bar-fill{ width:var(--w); }
+.s11-bar-desc{ font-size:12.5px; color:var(--dim); text-align:left; }
+@media (max-width:640px){ .s11-bar-row{ grid-template-columns:70px 1fr; } .s11-bar-desc{ grid-column:1 / -1; text-align:center; } }
+
+/* ==========================================================================
+   SECTION 12 — WHY BIGGER CONTEXT MATTERS
+   ========================================================================== */
+.s12-cards{ display:flex; gap:14px; flex-wrap:wrap; justify-content:center; max-width:920px; }
+.s12-card{
+  width:130px; padding:20px 12px; border-radius:16px; background:var(--glass-bg); border:1px solid var(--glass-border);
+  display:flex; flex-direction:column; align-items:center; gap:10px; font-size:34px; cursor:pointer;
+  transition:all .3s var(--ease);
+}
+.s12-card span{ font-size:12.5px; color:var(--dim); text-align:center; }
+.s12-card:hover, .s12-card.active{ transform:translateY(-6px); border-color:rgba(34,211,238,.5); box-shadow:0 12px 30px -8px rgba(34,211,238,.25); background:var(--glass-bg-strong); }
+.s12-detail{ margin-top:6px; padding:20px 28px; max-width:640px; font-size:14px; color:var(--dim); min-height:30px; transition:opacity .3s; }
+
+/* ==========================================================================
+   SECTION 13 — CONTEXT WINDOW VS MEMORY
+   ========================================================================== */
+.s13-compare{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; }
+.s13-col{
+  width:260px; padding:28px 24px; border-radius:22px; background:var(--glass-bg); border:1px solid var(--glass-border);
+  display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+  transition:transform .4s var(--ease), border-color .4s;
+}
+.s13-col:hover{ transform:translateY(-6px); }
+.s13-col.ram:hover{ border-color:rgba(34,211,238,.5); box-shadow:0 14px 34px -10px rgba(34,211,238,.3); }
+.s13-col.ssd:hover{ border-color:rgba(168,85,247,.5); box-shadow:0 14px 34px -10px rgba(168,85,247,.3); }
+.s13-chip{ width:64px; height:64px; border-radius:16px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04); animation:floatY 4s ease-in-out infinite; }
+.s13-col h3{ font-size:17px; font-weight:700; }
+.s13-tag{ font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dimmer); padding:3px 10px; border-radius:100px; border:1px solid var(--glass-border); }
+.s13-list{ margin-top:6px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--dim); }
+.s13-list li{ list-style:none; }
+.s13-vs{ font-size:15px; font-weight:800; color:var(--dimmer); letter-spacing:.1em; }
+
+/* ==========================================================================
+   SECTION 14 — WHY LARGE CONTEXT DOESN'T REPLACE RAG
+   ========================================================================== */
+.s14-arch{ display:flex; flex-direction:column; gap:26px; width:100%; max-width:920px; }
+.s14-path{ padding:20px; border-radius:18px; background:var(--glass-bg); border:1px solid var(--glass-border); }
+.s14-path-label{ font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--dimmer); margin-bottom:14px; text-align:left; }
+.s14-flow{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; }
+.s14-node{
+  display:flex; flex-direction:column; align-items:center; gap:6px; font-size:24px;
+  padding:12px 14px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); min-width:96px;
+}
+.s14-node span{ font-size:10.5px; color:var(--dim); text-align:center; }
+.s14-node.warn{ border-color:rgba(248,113,113,.4); }
+.s14-node.good{ border-color:rgba(74,222,128,.4); }
+.s14-arrow{ color:var(--dimmer); font-size:16px; }
+.s14-note{ text-align:right; font-size:11.5px; color:#f87171; margin-top:12px; opacity:.85; }
+.s14-note.good-note{ color:#4ade80; }
+
+/* ==========================================================================
+   SECTION 15 — ATTENTION MECHANISM
+   ========================================================================== */
+.s15-stage{ width:100%; max-width:860px; padding:26px; }
+.s15-hint{ font-size:12.5px; color:var(--dimmer); }
+.s15-token-rect{ cursor:pointer; transition:fill .25s, stroke .25s; }
+.s15-token-text{ pointer-events:none; font-size:13px; fill:#e5e9ff; font-family:var(--font); }
+.s15-attn-line{ stroke:rgba(120,170,255,0.18); stroke-width:1.2; transition:stroke .3s, stroke-width .3s, opacity .3s; opacity:0.35; }
+.s15-attn-line.active{ stroke:#22d3ee; stroke-width:2; opacity:0.95; }
+.s15-token-rect.active{ fill:rgba(34,211,238,0.25); stroke:#22d3ee; }
+.s15-token-rect.target{ fill:rgba(168,85,247,0.25); stroke:#a855f7; }
+
+/* ==========================================================================
+   SECTION 16 — COST OF LONG CONTEXT
+   ========================================================================== */
+.s16-flow{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:13.5px; color:var(--dim); }
+.s16-flow span{ padding:6px 16px; border-radius:100px; background:var(--glass-bg); border:1px solid var(--glass-border); }
+.s16-flow .s16-final{ color:#fca5a5; border-color:rgba(248,113,113,.4); font-weight:700; }
+.s16-arrow{ color:var(--dimmer); font-size:13px; line-height:1; }
+.s16-graph{ width:100%; max-width:600px; padding:24px; }
+
+/* ==========================================================================
+   SECTION 17 — CONTEXT COMPRESSION
+   ========================================================================== */
+.s17-pipeline{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; max-width:1080px; }
+.s17-stage-card{
+  width:150px; padding:18px 14px; border-radius:16px; background:var(--glass-bg); border:1px solid var(--glass-border);
+  display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+  opacity:0; transform:translateY(16px);
+}
+.slide.in-view .s17-stage-card{ animation:s7nodeIn .6s var(--ease) forwards; }
+.s17-pipeline .s17-stage-card:nth-of-type(1){ animation-delay:.1s !important; }
+.s17-pipeline .s17-stage-card:nth-of-type(2){ animation-delay:.5s !important; }
+.s17-pipeline .s17-stage-card:nth-of-type(3){ animation-delay:.9s !important; }
+.s17-pipeline .s17-stage-card:nth-of-type(4){ animation-delay:1.3s !important; }
+.s17-pipeline .s17-stage-card:nth-of-type(5){ animation-delay:1.7s !important; }
+.s17-stage-card.final{ border-color:rgba(34,211,238,.5); box-shadow:0 0 26px -6px rgba(34,211,238,.4); }
+.s17-icon{ font-size:26px; }
+.s17-stage-card h4{ font-size:12px; color:var(--dim); font-weight:600; }
+.s17-bar-vis{ width:100%; height:10px; border-radius:6px; background:rgba(255,255,255,0.06); overflow:hidden; display:flex; gap:3px; }
+.s17-fill-block{ height:100%; background:var(--grad-main); border-radius:6px; }
+.s17-bar-vis.chunks span{ flex:1; height:100%; background:var(--grad-main); border-radius:3px; opacity:.85; }
+.s17-chevron{ font-size:20px; color:var(--dimmer); }
+
+/* ==========================================================================
+   SECTION 18 — REAL APPLICATIONS
+   ========================================================================== */
+.s18-cards{ display:grid; grid-template-columns:repeat(3, minmax(180px,1fr)); gap:16px; max-width:920px; width:100%; }
+.s18-card{ text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.s18-ic{ font-size:28px; }
+.s18-card h4{ font-size:14px; color:var(--white); }
+.s18-card p{ font-size:12px; color:var(--dim); line-height:1.4; }
+@media (max-width:760px){ .s18-cards{ grid-template-columns:repeat(2,1fr); } }
+@media (max-width:480px){ .s18-cards{ grid-template-columns:1fr; } }
+
+/* ==========================================================================
+   SECTION 19 — COMMON MYTHS (flip cards)
+   ========================================================================== */
+.s19-cards{ display:grid; grid-template-columns:repeat(2, minmax(230px,1fr)); gap:20px; max-width:760px; width:100%; perspective:1200px; }
+.s19-flip{ height:170px; cursor:pointer; }
+.s19-flip-inner{
+  position:relative; width:100%; height:100%; transition:transform .6s var(--ease);
+  transform-style:preserve-3d;
+}
+.s19-flip.flipped .s19-flip-inner{ transform:rotateY(180deg); }
+.s19-face{
+  position:absolute; inset:0; border-radius:18px; backface-visibility:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  padding:20px; text-align:center; background:var(--glass-bg); border:1px solid var(--glass-border);
+}
+.s19-face.back{ transform:rotateY(180deg); background:rgba(34,211,238,0.06); border-color:rgba(34,211,238,.3); }
+.s19-face p{ font-size:13.5px; color:var(--white); line-height:1.5; }
+.s19-badge{ font-size:10px; letter-spacing:.12em; padding:3px 10px; border-radius:100px; font-weight:700; }
+.s19-badge.myth{ background:rgba(248,113,113,0.18); color:#f87171; }
+.s19-badge.reality{ background:rgba(74,222,128,0.18); color:#4ade80; }
+@media (max-width:600px){ .s19-cards{ grid-template-columns:1fr; } }
+
+/* ==========================================================================
+   SECTION 20 — BEST PRACTICES CHECKLIST
+   ========================================================================== */
+.s20-checklist{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:520px; text-align:left; }
+.s20-checklist li{
+  list-style:none; display:flex; align-items:center; gap:14px; font-size:15px; color:var(--dim);
+  padding:14px 18px; border-radius:14px; background:var(--glass-bg); border:1px solid var(--glass-border);
+  opacity:0; transform:translateX(-24px);
+}
+.s20-checklist.animate li{ animation:s20in .5s var(--ease) forwards; }
+.s20-checklist li:nth-child(1){ animation-delay:.05s; } .s20-checklist li:nth-child(2){ animation-delay:.25s; }
+.s20-checklist li:nth-child(3){ animation-delay:.45s; } .s20-checklist li:nth-child(4){ animation-delay:.65s; }
+.s20-checklist li:nth-child(5){ animation-delay:.85s; } .s20-checklist li:nth-child(6){ animation-delay:1.05s; }
+@keyframes s20in{ to{ opacity:1; transform:translateX(0); } }
+.s20-check{
+  width:22px; height:22px; border-radius:50%; background:var(--grad-main); color:#04070d; font-size:12px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+
+/* ==========================================================================
+   SECTION 21 — FUTURE OF CONTEXT WINDOWS
+   ========================================================================== */
+.s21-timeline{ position:relative; width:100%; max-width:720px; display:flex; flex-direction:column; gap:22px; padding-left:36px; }
+.s21-line{ position:absolute; left:9px; top:6px; bottom:6px; width:2px; background:linear-gradient(180deg,var(--blue),var(--cyan),var(--purple)); box-shadow:0 0 12px rgba(34,211,238,0.4); }
+.s21-item{ position:relative; display:flex; align-items:flex-start; gap:16px; text-align:left; opacity:0; transform:translateX(-16px); }
+.slide.in-view .s21-item{ animation:s21in .6s var(--ease) forwards; }
+.s21-item:nth-child(2){ animation-delay:.1s !important; } .s21-item:nth-child(3){ animation-delay:.3s !important; }
+.s21-item:nth-child(4){ animation-delay:.5s !important; } .s21-item:nth-child(5){ animation-delay:.7s !important; }
+.s21-item:nth-child(6){ animation-delay:.9s !important; } .s21-item:nth-child(7){ animation-delay:1.1s !important; }
+@keyframes s21in{ to{ opacity:1; transform:translateX(0); } }
+.s21-dot{
+  position:absolute; left:-36px; top:4px; width:18px; height:18px; border-radius:50%;
+  background:var(--grad-main); box-shadow:0 0 14px rgba(34,211,238,.6);
+  animation:pulseGlow 2.4s ease-in-out infinite;
+}
+.s21-label h4{ font-size:15px; color:var(--white); margin-bottom:4px; }
+.s21-label p{ font-size:12.5px; color:var(--dim); }
+
+/* ==========================================================================
+   SECTION 22 — SUMMARY
+   ========================================================================== */
+.s22-chain{ display:flex; flex-direction:column; align-items:center; gap:6px; width:100%; max-width:480px; }
+.s22-node{
+  padding:12px 26px; border-radius:100px; font-size:14px; font-weight:600; color:var(--white);
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  opacity:0; transform:scale(.85);
+}
+.slide.in-view .s22-node{ animation:s22pop .5s var(--ease) forwards; }
+.s22-chain .s22-node:nth-of-type(1){ animation-delay:.1s !important; }
+.s22-chain .s22-node:nth-of-type(2){ animation-delay:.4s !important; }
+.s22-chain .s22-node:nth-of-type(3){ animation-delay:.7s !important; }
+.s22-chain .s22-node:nth-of-type(4){ animation-delay:1.0s !important; }
+.s22-chain .s22-node:nth-of-type(5){ animation-delay:1.3s !important; }
+.s22-chain .s22-node:nth-of-type(6){ animation-delay:1.6s !important; }
+.s22-chain .s22-node:nth-of-type(7){ animation-delay:1.9s !important; }
+@keyframes s22pop{ to{ opacity:1; transform:scale(1); } }
+.s22-node.final{ background:var(--grad-main); color:#04070d; border-color:transparent; box-shadow:0 0 24px rgba(34,211,238,.4); }
+.s22-arrow{ color:var(--dimmer); font-size:13px; }
+
+/* ==========================================================================
+   SECTION 23 — ENDING SCREEN
+   ========================================================================== */
+.s23-canvas{ position:absolute; inset:0; width:100%; height:100%; z-index:0; }
+.s23-cta{ margin-top:10px; }
+
+/* MARKER:SECTION-CSS */
+
+/* ==========================================================================
+   GLOBAL RESPONSIVE ADJUSTMENTS
+   Applies across all sections for tablet & mobile breakpoints.
+   ========================================================================== */
+@media (max-width:1024px){
+  .nav-dots{ right:14px; }
+  .nav-arrows{ right:14px; }
+  .brand{ font-size:11px; left:16px; }
+  .section-indicator{ left:16px; }
+  section.slide{ padding:5vh 5vw; }
+}
+
+@media (max-width:820px){
+  .nav-dots button::after{ display:none; } /* hide tooltip labels, no room */
+  .hero-stage svg{ max-width:100%; }
+  .s4-grid{ height:auto; min-height:520px; }
+  .s10-cases{ flex-direction:column; align-items:center; }
+  .s14-flow{ gap:6px; }
+  .s17-pipeline{ gap:4px; }
+  .s17-chevron{ display:none; }
+}
+
+@media (max-width:680px){
+  .brand{ font-size:10px; }
+  .nav-arrows{ bottom:70px; }
+  .section-indicator{ bottom:20px; font-size:10px; }
+  .scroll-hint{ display:none; }
+  h1.title{ font-size:clamp(2.1rem, 9vw, 3.2rem); }
+  h2.title{ font-size:clamp(1.6rem, 7vw, 2.4rem); }
+  p.subtitle, p.lede{ font-size:0.92rem; }
+  .s2-stage svg, .s15-stage svg{ max-width:100%; }
+  .s5-row{ flex-direction:column; align-items:flex-start; gap:6px; }
+  .s5-tag{ width:auto; text-align:left; }
+  .s9-belt-window{ margin:0 8px; }
+  .s9-belt-base{ margin:8px 8px 0; }
+  .s12-cards{ gap:10px; }
+  .s12-card{ width:100px; padding:14px 8px; font-size:26px; }
+  .s13-compare{ flex-direction:column; }
+  .s13-vs{ transform:rotate(90deg); margin:4px 0; }
+  .s16-graph{ padding:14px; }
+  .s21-timeline{ padding-left:28px; }
+  .s21-dot{ left:-28px; width:14px; height:14px; }
+}
+
+@media (max-width:480px){
+  .btn{ padding:11px 22px; font-size:13px; }
+  .glass, .card{ padding:16px; }
+  .s6-picker{ gap:6px; }
+  .s6-pick{ padding:8px 12px; font-size:12px; }
+  .s7-stage-node{ width:100px; padding:14px 6px; font-size:11px; }
+  .s7-icon{ font-size:20px; }
+  .s7-connector{ width:18px; }
+  .eyebrow{ font-size:11px; }
+}
+
+/* Respect reduced-motion preference: soften/disable non-essential motion */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  html{ scroll-behavior:auto; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="grain"></div>
+
+<div class="brand"><span class="dot"></span> CONTEXT WINDOWS · A VISUAL GUIDE</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+<nav class="nav-dots" id="navDots"></nav>
+
+<div class="nav-arrows">
+  <button id="btnPrev" aria-label="Previous section"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+  <button id="btnNext" aria-label="Next section"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+</div>
+
+<div class="section-indicator"><span class="cur" id="curIndex">01</span> / <span id="totalIndex">23</span><span class="label" id="curLabel"></span></div>
+
+<div class="scroll-hint" id="scrollHint"><span>Scroll</span><div class="mouse"></div></div>
+
+<main id="main">
+
+<!-- ============================================================ -->
+<!-- SECTION 01 — HERO -->
+<!-- ============================================================ -->
+<section class="slide" id="s1" data-index="0">
+  <div class="blob" style="width:520px;height:520px;background:radial-gradient(circle,var(--blue),transparent 70%);top:-120px;left:-120px;"></div>
+  <div class="blob" style="width:460px;height:460px;background:radial-gradient(circle,var(--purple),transparent 70%);bottom:-140px;right:-100px;animation-delay:-4s;"></div>
+  <div class="slide-inner">
+    <div data-reveal="fade-down" class="eyebrow">Large Language Models · Visual Guide</div>
+    <h1 class="title" data-reveal="blur" data-reveal-delay="1">Understanding<br/>Context&nbsp;Windows</h1>
+    <p class="subtitle" data-reveal="fade-up" data-reveal-delay="2">How Large Language Models remember — and forget — a conversation.</p>
+
+    <!-- Hero animation: glowing AI brain connected to flowing conversation bubbles -->
+    <div class="hero-stage" data-reveal="scale" data-reveal-delay="3">
+      <svg viewBox="0 0 760 360" width="100%" height="100%" style="max-width:820px;overflow:visible">
+        <defs>
+          <radialGradient id="brainGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.9"/>
+            <stop offset="45%" stop-color="#3b82f6" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#22d3ee"/>
+            <stop offset="100%" stop-color="#a855f7"/>
+          </linearGradient>
+          <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="6" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- central glow -->
+        <circle cx="380" cy="180" r="150" fill="url(#brainGlow)" class="hero-pulse"/>
+
+        <!-- brain core: neural node cluster -->
+        <g class="hero-brain" filter="url(#softGlow)">
+          <path d="M380 90c-45 0-80 32-84 72-22 8-36 28-36 51 0 30 24 54 55 57 8 22 30 38 55 38 14 0 27-5 37-13 10 8 23 13 37 13 25 0 47-16 55-38 31-3 55-27 55-57 0-23-14-43-36-51-4-40-39-72-84-72-4 0-8 0-11 1-4-1-8-1-13-1z"
+            fill="none" stroke="url(#lineGrad)" stroke-width="2.5" opacity="0.85"/>
+          <g class="brain-nodes">
+            <circle cx="340" cy="140" r="5" fill="#22d3ee"/>
+            <circle cx="410" cy="130" r="4" fill="#3b82f6"/>
+            <circle cx="380" cy="180" r="6" fill="#fff"/>
+            <circle cx="330" cy="200" r="4" fill="#a855f7"/>
+            <circle cx="430" cy="200" r="5" fill="#22d3ee"/>
+            <circle cx="365" cy="230" r="4" fill="#3b82f6"/>
+            <circle cx="400" cy="235" r="4.5" fill="#a855f7"/>
+            <line x1="340" y1="140" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+            <line x1="410" y1="130" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+            <line x1="330" y1="200" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+            <line x1="430" y1="200" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+            <line x1="365" y1="230" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+            <line x1="400" y1="235" x2="380" y2="180" stroke="#7dd3fc" stroke-width="1.2" opacity="0.6"/>
+          </g>
+        </g>
+
+        <!-- flowing conversation bubbles connecting into the brain -->
+        <g class="hero-bubbles">
+          <g class="bubble-path">
+            <path d="M60 70 C 160 70, 220 130, 330 165" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.5"/>
+            <rect x="20" y="48" width="86" height="30" rx="15" fill="rgba(59,130,246,0.15)" stroke="#3b82f6" stroke-width="1"/>
+            <circle class="token-runner" r="4" fill="#7dd3fc" style="offset-path:path('M60 70 C 160 70, 220 130, 330 165'); animation-delay:0s;"/>
+          </g>
+          <g class="bubble-path">
+            <path d="M60 180 C 160 180, 220 190, 320 185" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.5"/>
+            <rect x="18" y="158" width="100" height="30" rx="15" fill="rgba(34,211,238,0.13)" stroke="#22d3ee" stroke-width="1"/>
+            <circle class="token-runner" r="4" fill="#22d3ee" style="offset-path:path('M60 180 C 160 180, 220 190, 320 185'); animation-delay:1.1s;"/>
+          </g>
+          <g class="bubble-path">
+            <path d="M60 290 C 170 290, 230 230, 335 200" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.5"/>
+            <rect x="16" y="268" width="92" height="30" rx="15" fill="rgba(168,85,247,0.15)" stroke="#a855f7" stroke-width="1"/>
+            <circle class="token-runner" r="4" fill="#c084fc" style="offset-path:path('M60 290 C 170 290, 230 230, 335 200'); animation-delay:2.2s;"/>
+          </g>
+          <g class="bubble-path">
+            <path d="M700 90 C 620 100, 560 130, 440 160" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.5"/>
+            <rect x="654" y="68" width="86" height="30" rx="15" fill="rgba(34,211,238,0.13)" stroke="#22d3ee" stroke-width="1"/>
+            <circle class="token-runner" r="4" fill="#22d3ee" style="offset-path:path('M700 90 C 620 100, 560 130, 440 160'); animation-delay:0.6s;"/>
+          </g>
+          <g class="bubble-path">
+            <path d="M700 290 C 610 280, 560 240, 430 205" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.5"/>
+            <rect x="652" y="268" width="92" height="30" rx="15" fill="rgba(59,130,246,0.15)" stroke="#3b82f6" stroke-width="1"/>
+            <circle class="token-runner" r="4" fill="#7dd3fc" style="offset-path:path('M700 290 C 610 280, 560 240, 430 205'); animation-delay:1.7s;"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="hero-cta" data-reveal="fade-up" data-reveal-delay="4">
+      <button class="btn" id="heroStartBtn">Begin the Journey</button>
+      <span class="hero-hint">23 chapters · ~8 min read</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 02 — WHAT IS A CONTEXT WINDOW -->
+<!-- ============================================================ -->
+<section class="slide" id="s2" data-index="1">
+  <div class="blob" style="width:420px;height:420px;background:radial-gradient(circle,var(--cyan),transparent 70%);top:10%;right:-100px;"></div>
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">02 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">What is a <span class="grad">Context Window?</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      A context window is the amount of information an AI model can consider at one time
+      while generating a response — every prompt, message, and instruction it can actively "see."
+    </p>
+
+    <!-- Animation: messages flow into a glowing AI memory container -->
+    <div class="s2-stage" data-reveal="scale" data-reveal-delay="3">
+      <svg viewBox="0 0 780 300" width="100%" height="100%" style="max-width:760px">
+        <defs>
+          <linearGradient id="s2ContainerGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.85"/>
+          </linearGradient>
+          <filter id="s2glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- incoming message chips traveling toward the container -->
+        <g class="s2-msgs">
+          <rect class="s2-msg" x="20" y="40" width="120" height="28" rx="14" fill="rgba(59,130,246,0.18)" stroke="#3b82f6"/>
+          <rect class="s2-msg" x="10" y="90" width="140" height="28" rx="14" fill="rgba(34,211,238,0.16)" stroke="#22d3ee" style="animation-delay:.5s"/>
+          <rect class="s2-msg" x="30" y="140" width="110" height="28" rx="14" fill="rgba(168,85,247,0.16)" stroke="#a855f7" style="animation-delay:1s"/>
+          <rect class="s2-msg" x="14" y="190" width="130" height="28" rx="14" fill="rgba(59,130,246,0.18)" stroke="#3b82f6" style="animation-delay:1.5s"/>
+        </g>
+
+        <!-- glowing memory container -->
+        <g filter="url(#s2glow)">
+          <rect x="440" y="40" width="300" height="200" rx="24" fill="rgba(255,255,255,0.03)" stroke="url(#s2ContainerGrad)" stroke-width="2.5" class="s2-container"/>
+        </g>
+        <text x="590" y="26" text-anchor="middle" fill="#9aa4c2" font-size="12" letter-spacing="2">CONTEXT WINDOW</text>
+
+        <!-- fill level bar inside container -->
+        <rect x="460" y="200" width="260" class="s2-fill" height="18" rx="9" fill="url(#s2ContainerGrad)" opacity="0.85"/>
+        <rect x="460" y="200" width="260" height="18" rx="9" fill="none" stroke="rgba(255,255,255,0.15)"/>
+
+        <!-- small icon tokens settling inside -->
+        <g class="s2-settled">
+          <rect x="462" y="60" width="60" height="18" rx="9" fill="rgba(59,130,246,0.35)"/>
+          <rect x="530" y="60" width="80" height="18" rx="9" fill="rgba(34,211,238,0.35)"/>
+          <rect x="618" y="60" width="50" height="18" rx="9" fill="rgba(168,85,247,0.35)"/>
+          <rect x="462" y="86" width="90" height="18" rx="9" fill="rgba(168,85,247,0.3)"/>
+          <rect x="560" y="86" width="70" height="18" rx="9" fill="rgba(59,130,246,0.3)"/>
+          <rect x="462" y="112" width="70" height="18" rx="9" fill="rgba(34,211,238,0.3)"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="s2-caption" data-reveal="fade-up" data-reveal-delay="4">
+      Everything inside the window shapes the next response. Everything outside it&nbsp;— doesn't exist to the model.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 03 — HUMAN MEMORY ANALOGY -->
+<!-- ============================================================ -->
+<section class="slide" id="s3" data-index="2">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">03 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">A Human <span class="grad">Memory Analogy</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      Think of a whiteboard. Sticky notes go up as the conversation continues.
+      Once the board is full, the oldest notes have to come down to make room for new ones.
+    </p>
+
+    <!-- Whiteboard with sticky notes filling up, then oldest sliding away -->
+    <div class="s3-stage" data-reveal="scale" data-reveal-delay="3">
+      <svg viewBox="0 0 700 340" width="100%" height="100%" style="max-width:640px">
+        <!-- whiteboard -->
+        <rect x="40" y="20" width="620" height="300" rx="16" fill="#0e1220" stroke="rgba(255,255,255,0.18)" stroke-width="3"/>
+        <rect x="40" y="20" width="620" height="300" rx="16" fill="none" stroke="rgba(59,130,246,0.25)" stroke-width="1"/>
+        <!-- stand legs -->
+        <line x1="150" y1="320" x2="110" y2="336" stroke="rgba(255,255,255,0.25)" stroke-width="4" stroke-linecap="round"/>
+        <line x1="550" y1="320" x2="590" y2="336" stroke="rgba(255,255,255,0.25)" stroke-width="4" stroke-linecap="round"/>
+
+        <g id="s3-notes">
+          <g class="s3-note" data-slot="0" style="--bg:#fde68a">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="104" y2="28"/><line x1="14" y1="46" x2="90" y2="46"/><line x1="14" y1="64" x2="98" y2="64"/>
+          </g>
+          <g class="s3-note" data-slot="1" style="--bg:#93c5fd">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="100" y2="28"/><line x1="14" y1="46" x2="80" y2="46"/><line x1="14" y1="64" x2="94" y2="64"/>
+          </g>
+          <g class="s3-note" data-slot="2" style="--bg:#c4b5fd">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="96" y2="28"/><line x1="14" y1="46" x2="88" y2="46"/><line x1="14" y1="64" x2="70" y2="64"/>
+          </g>
+          <g class="s3-note" data-slot="3" style="--bg:#86efac">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="102" y2="28"/><line x1="14" y1="46" x2="76" y2="46"/><line x1="14" y1="64" x2="92" y2="64"/>
+          </g>
+          <g class="s3-note" data-slot="4" style="--bg:#fca5a5">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="98" y2="28"/><line x1="14" y1="46" x2="84" y2="46"/><line x1="14" y1="64" x2="72" y2="64"/>
+          </g>
+          <g class="s3-note" data-slot="5" style="--bg:#fdba74">
+            <rect x="0" y="0" width="118" height="98" rx="6"/>
+            <line x1="14" y1="28" x2="104" y2="28"/><line x1="14" y1="46" x2="82" y2="46"/><line x1="14" y1="64" x2="96" y2="64"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="s3-caption" data-reveal="fade-up" data-reveal-delay="4" id="s3Caption">
+      New notes keep arriving...
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 04 — WHAT LIVES INSIDE THE CONTEXT WINDOW -->
+<!-- ============================================================ -->
+<section class="slide" id="s4" data-index="3">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">04 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">What Lives Inside <span class="grad">the Context Window?</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Everything the model needs to answer you flows into one shared space.</p>
+
+    <div class="s4-grid" data-reveal="scale" data-reveal-delay="3">
+      <div class="s4-items">
+        <div class="s4-item" style="--i:0"><svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.8"><path d="M4 4h16v12H8l-4 4V4z"/></svg><span>Current Prompt</span></div>
+        <div class="s4-item" style="--i:1"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 10h8M8 14h5"/></svg><span>Previous Messages</span></div>
+        <div class="s4-item" style="--i:2"><svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="1.8"><path d="M5 5h14v14H5z"/><path d="M9 9h6M9 13h6"/></svg><span>Assistant Responses</span></div>
+        <div class="s4-item" style="--i:3"><svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>System Instructions</span></div>
+        <div class="s4-item" style="--i:4"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M13 3v5h5"/></svg><span>Uploaded PDFs</span></div>
+        <div class="s4-item" style="--i:5"><svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="1.8"><path d="M9 8l-5 4 5 4M15 8l5 4-5 4"/></svg><span>Code</span></div>
+        <div class="s4-item" style="--i:6"><svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 16l5-4 3 3 4-5 4 6"/></svg><span>Images</span></div>
+        <div class="s4-item" style="--i:7"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8"><path d="M6 4h9l3 3v13H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Documents</span></div>
+      </div>
+
+      <svg class="s4-links" viewBox="0 0 900 460" preserveAspectRatio="none">
+        <defs>
+          <radialGradient id="s4CoreGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="450" cy="230" r="130" fill="url(#s4CoreGlow)"/>
+      </svg>
+
+      <div class="s4-core">
+        <div class="s4-core-ring"></div>
+        <div class="s4-core-label">Context<br/>Window</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 05 — UNDERSTANDING TOKENS -->
+<!-- ============================================================ -->
+<section class="slide" id="s5" data-index="4">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">05 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Understanding <span class="grad">Tokens</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      Context windows aren't measured in words — they're measured in <strong>tokens</strong>,
+      small chunks of text the model reads one piece at a time.
+    </p>
+
+    <!-- Sentence -> Words -> Tokens breakdown animation -->
+    <div class="s5-stage" data-reveal="scale" data-reveal-delay="3">
+      <div class="s5-row s5-sentence">
+        <span class="s5-tag">Sentence</span>
+        <div class="s5-box" id="s5Sentence">Context windows shape what an AI remembers.</div>
+      </div>
+      <div class="s5-arrow">↓</div>
+      <div class="s5-row s5-words" id="s5Words">
+        <span class="s5-tag">Words</span>
+        <div class="s5-chip-row" id="s5WordsRow"></div>
+      </div>
+      <div class="s5-arrow">↓</div>
+      <div class="s5-row s5-tokens">
+        <span class="s5-tag">Tokens</span>
+        <div class="s5-chip-row" id="s5TokensRow"></div>
+      </div>
+    </div>
+
+    <div class="s5-stats" data-reveal="fade-up" data-reveal-delay="4">
+      <div class="s5-stat"><div class="s5-stat-num" id="s5CharCount">0</div><div class="s5-stat-label">Characters</div></div>
+      <div class="s5-stat"><div class="s5-stat-num" id="s5WordCount">0</div><div class="s5-stat-label">Words</div></div>
+      <div class="s5-stat"><div class="s5-stat-num" id="s5TokenCount">0</div><div class="s5-stat-label">Tokens</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 06 — WORDS VS TOKENS -->
+<!-- ============================================================ -->
+<section class="slide" id="s6" data-index="5">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">06 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Words vs <span class="grad">Tokens</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      Click a sentence below to see how it actually splits into tokens — including punctuation.
+    </p>
+
+    <div class="s6-picker" data-reveal="fade-up" data-reveal-delay="3">
+      <button class="s6-pick active" data-sentence="I can't believe it's already working!">I can't believe it's already working!</button>
+      <button class="s6-pick" data-sentence="Tokenization isn't the same as counting words.">Tokenization isn't the same as counting words.</button>
+      <button class="s6-pick" data-sentence="Let's split: commas, periods, and words.">Let's split: commas, periods, and words.</button>
+    </div>
+
+    <div class="s6-visual glass" data-reveal="scale" data-reveal-delay="4">
+      <div class="s6-tokens" id="s6TokenDisplay"></div>
+    </div>
+    <div class="s6-legend" data-reveal="fade-up" data-reveal-delay="5">
+      <span><i style="background:#3b82f6"></i> Word</span>
+      <span><i style="background:#a855f7"></i> Sub-word</span>
+      <span><i style="background:#22d3ee"></i> Punctuation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 07 — HOW AN LLM USES CONTEXT -->
+<!-- ============================================================ -->
+<section class="slide" id="s7" data-index="6">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">07 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">How an LLM <span class="grad">Uses Context</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Your prompt travels through several stages before a response ever appears.</p>
+
+    <div class="s7-pipeline" data-reveal="scale" data-reveal-delay="3" id="s7Pipeline">
+      <div class="s7-stage-node" data-i="0"><div class="s7-icon">📝</div><span>User Prompt</span></div>
+      <div class="s7-connector"></div>
+      <div class="s7-stage-node" data-i="1"><div class="s7-icon">🧩</div><span>Context Assembly</span></div>
+      <div class="s7-connector"></div>
+      <div class="s7-stage-node" data-i="2"><div class="s7-icon">🔤</div><span>Token Processing</span></div>
+      <div class="s7-connector"></div>
+      <div class="s7-stage-node" data-i="3"><div class="s7-icon">🔗</div><span>Attention</span></div>
+      <div class="s7-connector"></div>
+      <div class="s7-stage-node" data-i="4"><div class="s7-icon">🎯</div><span>Prediction</span></div>
+      <div class="s7-connector"></div>
+      <div class="s7-stage-node" data-i="5"><div class="s7-icon">💬</div><span>Response</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 08 — CONTEXT WINDOW LIFECYCLE -->
+<!-- ============================================================ -->
+<section class="slide" id="s8" data-index="7">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">08 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Context Window <span class="grad">Lifecycle</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">As a conversation grows, the memory bar fills — until older messages must expire.</p>
+
+    <div class="s8-stage" data-reveal="scale" data-reveal-delay="3">
+      <div class="s8-bar-wrap">
+        <div class="s8-bar"><div class="s8-bar-fill" id="s8BarFill"></div></div>
+        <div class="s8-bar-label"><span id="s8Percent">0%</span> of context window used</div>
+      </div>
+      <div class="s8-timeline" id="s8Timeline"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 09 — WHEN THE WINDOW BECOMES FULL -->
+<!-- ============================================================ -->
+<section class="slide" id="s9" data-index="8">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">09 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">When the Window <span class="grad">Becomes Full</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      Picture a conveyor belt with fixed capacity. As new messages arrive on one end,
+      the oldest ones fall off the other — the total capacity never changes.
+    </p>
+
+    <div class="s9-stage glass" data-reveal="scale" data-reveal-delay="3">
+      <div class="s9-belt-window">
+        <div class="s9-belt-track" id="s9Track"></div>
+      </div>
+      <div class="s9-belt-base"></div>
+      <div class="s9-drop-zone">↳ falls off</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 10 — REAL EXAMPLE -->
+<!-- ============================================================ -->
+<section class="slide" id="s10" data-index="9">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">10 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">A Real <span class="grad">Example</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">The same question. Two different outcomes — depending on what's still in the window.</p>
+
+    <div class="s10-cases" data-reveal="scale" data-reveal-delay="3">
+      <div class="s10-case">
+        <div class="s10-case-label ok">✓ Still In Context</div>
+        <div class="s10-chat">
+          <div class="s10-bubble user">My favorite programming language is Rust.</div>
+          <div class="s10-bubble ai muted">Great choice! Rust is fast and memory-safe.</div>
+          <div class="s10-dots">⋯ conversation continues ⋯</div>
+          <div class="s10-bubble user">What's my favorite language?</div>
+          <div class="s10-bubble ai highlight" id="s10Ans1"></div>
+        </div>
+      </div>
+
+      <div class="s10-case">
+        <div class="s10-case-label bad">✕ Pushed Out of Context</div>
+        <div class="s10-chat">
+          <div class="s10-bubble user faded">My favorite programming language is Rust.</div>
+          <div class="s10-fade-marker">▲ scrolled out of the window ▲</div>
+          <div class="s10-dots">⋯ many messages later ⋯</div>
+          <div class="s10-bubble user">What's my favorite language?</div>
+          <div class="s10-bubble ai error" id="s10Ans2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 11 — CONTEXT WINDOW SIZES -->
+<!-- ============================================================ -->
+<section class="slide" id="s11" data-index="10">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">11 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Context Window <span class="grad">Sizes</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">
+      Exact token limits change with every model release — but the relative scale tells a clear story.
+    </p>
+
+    <div class="s11-bars" data-reveal="scale" data-reveal-delay="3">
+      <div class="s11-bar-row" data-pct="8">
+        <div class="s11-bar-label">Small</div>
+        <div class="s11-bar-track"><div class="s11-bar-fill" style="--w:8%"></div></div>
+        <div class="s11-bar-desc">~ a few pages of text</div>
+      </div>
+      <div class="s11-bar-row" data-pct="22">
+        <div class="s11-bar-label">Medium</div>
+        <div class="s11-bar-track"><div class="s11-bar-fill" style="--w:22%"></div></div>
+        <div class="s11-bar-desc">~ a short story or long report</div>
+      </div>
+      <div class="s11-bar-row" data-pct="55">
+        <div class="s11-bar-label">Large</div>
+        <div class="s11-bar-track"><div class="s11-bar-fill" style="--w:55%"></div></div>
+        <div class="s11-bar-desc">~ a whole novel or codebase module</div>
+      </div>
+      <div class="s11-bar-row" data-pct="100">
+        <div class="s11-bar-label">Very Large</div>
+        <div class="s11-bar-track"><div class="s11-bar-fill" style="--w:100%"></div></div>
+        <div class="s11-bar-desc">~ several books or an entire repository</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 12 — WHY BIGGER CONTEXT WINDOWS MATTER -->
+<!-- ============================================================ -->
+<section class="slide" id="s12" data-index="11">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">12 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Why Bigger Context <span class="grad">Windows Matter</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Click a card to see why scale changes what's possible.</p>
+
+    <div class="s12-cards" data-reveal="scale" data-reveal-delay="3">
+      <div class="s12-card" data-detail="Entire novels can be analyzed in a single pass — themes, characters, and plot threads all considered together.">📚<span>Books</span></div>
+      <div class="s12-card" data-detail="Whole codebases can be reasoned about at once, so an AI understands how files and modules relate.">🗂️<span>Repositories</span></div>
+      <div class="s12-card" data-detail="Long research papers, with citations and appendices, can be read and cross-referenced in full.">🔬<span>Research Papers</span></div>
+      <div class="s12-card" data-detail="Lengthy legal contracts can be reviewed clause-by-clause without losing earlier context.">📄<span>Contracts</span></div>
+      <div class="s12-card" data-detail="Full patient histories can inform a single, more accurate clinical suggestion.">🩺<span>Medical Records</span></div>
+      <div class="s12-card" data-detail="Entire support ticket histories help the AI understand a customer's full journey.">🎧<span>Support Conversations</span></div>
+      <div class="s12-card" data-detail="Long, multi-day chats retain earlier decisions instead of repeating questions.">💬<span>Long Chats</span></div>
+    </div>
+    <div class="s12-detail glass" id="s12Detail">Select a card above to explore an example.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 13 — CONTEXT WINDOW VS MEMORY -->
+<!-- ============================================================ -->
+<section class="slide" id="s13" data-index="12">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">13 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Context Window vs <span class="grad">Memory</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Think of it the way a computer separates fast working memory from persistent storage.</p>
+
+    <div class="s13-compare" data-reveal="scale" data-reveal-delay="3">
+      <div class="s13-col ram">
+        <div class="s13-chip">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#22d3ee" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4V2M15 4V2M9 22v-2M15 22v-2M4 9H2M4 15H2M22 9h-2M22 15h-2"/></svg>
+        </div>
+        <h3>Context Window</h3>
+        <div class="s13-tag">≈ RAM</div>
+        <ul class="s13-list">
+          <li>Temporary</li>
+          <li>Exists only for this conversation</li>
+          <li>Cleared when the chat ends</li>
+          <li>Extremely fast to access</li>
+        </ul>
+      </div>
+
+      <div class="s13-vs">VS</div>
+
+      <div class="s13-col ssd">
+        <div class="s13-chip">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#a855f7" stroke-width="1.6"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M7 7V4h10v3M7 13h4"/></svg>
+        </div>
+        <h3>Memory</h3>
+        <div class="s13-tag">≈ SSD</div>
+        <ul class="s13-list">
+          <li>Persistent, when enabled</li>
+          <li>Carries across conversations</li>
+          <li>Selectively saved &amp; recalled</li>
+          <li>Slightly slower to retrieve</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 14 — WHY LARGE CONTEXT DOESN'T REPLACE RAG -->
+<!-- ============================================================ -->
+<section class="slide" id="s14" data-index="13">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">14 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Why Large Context Doesn't <span class="grad">Replace RAG</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Bigger windows help — but retrieval keeps knowledge fresh, scalable, and cheap.</p>
+
+    <div class="s14-arch" data-reveal="scale" data-reveal-delay="3">
+      <div class="s14-path">
+        <div class="s14-path-label">Without RAG</div>
+        <div class="s14-flow">
+          <div class="s14-node">🗄️<span>Entire Document Set</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node warn">🧠<span>Large Context Only</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node">💬<span>Response</span></div>
+        </div>
+        <div class="s14-note">Slow · expensive · re-reads everything every time</div>
+      </div>
+
+      <div class="s14-path">
+        <div class="s14-path-label">With RAG</div>
+        <div class="s14-flow">
+          <div class="s14-node">🗄️<span>Knowledge Base</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node good">🔍<span>Retriever</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node good">📎<span>Relevant Chunks</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node">🧠<span>LLM</span></div>
+          <div class="s14-arrow">→</div>
+          <div class="s14-node">💬<span>Response</span></div>
+        </div>
+        <div class="s14-note good-note">Fresh · scalable · efficient · lower cost</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 15 — ATTENTION MECHANISM -->
+<!-- ============================================================ -->
+<section class="slide" id="s15" data-index="14">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">15 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">The <span class="grad">Attention</span> Mechanism</h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Hover a token to see which other tokens it "pays attention to" when forming meaning.</p>
+
+    <div class="s15-stage glass" data-reveal="scale" data-reveal-delay="3">
+      <svg id="s15Svg" viewBox="0 0 780 220" width="100%" height="100%" style="max-width:820px"></svg>
+    </div>
+    <div class="s15-hint" data-reveal="fade-up" data-reveal-delay="4">Try hovering "it" — notice how it connects back to "context&nbsp;window."</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 16 — COST OF LONG CONTEXT -->
+<!-- ============================================================ -->
+<section class="slide" id="s16" data-index="15">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">16 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">The Cost of <span class="grad">Long Context</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Bigger context windows don't come free — every extra token adds computational weight.</p>
+
+    <div class="s16-flow" data-reveal="fade-up" data-reveal-delay="3">
+      <span>More Context</span><div class="s16-arrow">↓</div>
+      <span>More Computation</span><div class="s16-arrow">↓</div>
+      <span>More GPU Memory</span><div class="s16-arrow">↓</div>
+      <span>Higher Latency</span><div class="s16-arrow">↓</div>
+      <span class="s16-final">Higher Cost</span>
+    </div>
+
+    <div class="s16-graph glass" data-reveal="scale" data-reveal-delay="4">
+      <svg id="s16Svg" viewBox="0 0 560 220" width="100%" height="100%"></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 17 — CONTEXT COMPRESSION -->
+<!-- ============================================================ -->
+<section class="slide" id="s17" data-index="16">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">17 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Context <span class="grad">Compression</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">When information is too large to fit, it gets progressively distilled down to what matters.</p>
+
+    <div class="s17-pipeline" data-reveal="scale" data-reveal-delay="3">
+      <div class="s17-stage-card">
+        <div class="s17-icon">📚</div>
+        <h4>Large Document</h4>
+        <div class="s17-bar-vis"><div class="s17-fill-block" style="width:100%"></div></div>
+      </div>
+      <div class="s17-chevron">›</div>
+      <div class="s17-stage-card">
+        <div class="s17-icon">🧱</div>
+        <h4>Chunking</h4>
+        <div class="s17-bar-vis chunks"><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="s17-chevron">›</div>
+      <div class="s17-stage-card">
+        <div class="s17-icon">✂️</div>
+        <h4>Summarization</h4>
+        <div class="s17-bar-vis"><div class="s17-fill-block" style="width:55%"></div></div>
+      </div>
+      <div class="s17-chevron">›</div>
+      <div class="s17-stage-card">
+        <div class="s17-icon">🧬</div>
+        <h4>Semantic Compression</h4>
+        <div class="s17-bar-vis"><div class="s17-fill-block" style="width:28%"></div></div>
+      </div>
+      <div class="s17-chevron">›</div>
+      <div class="s17-stage-card final">
+        <div class="s17-icon">✨</div>
+        <h4>Final Context</h4>
+        <div class="s17-bar-vis"><div class="s17-fill-block" style="width:14%"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 18 — REAL APPLICATIONS -->
+<!-- ============================================================ -->
+<section class="slide" id="s18" data-index="17">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">18 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Real <span class="grad">Applications</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Context windows power tools you may already be using.</p>
+
+    <div class="s18-cards" data-reveal="scale" data-reveal-delay="3">
+      <div class="card s18-card"><div class="s18-ic">👨‍💻</div><h4>AI Coding Assistant</h4><p>Reasons across entire files &amp; repos.</p></div>
+      <div class="card s18-card"><div class="s18-ic">🔬</div><h4>Research Assistant</h4><p>Cross-references whole papers.</p></div>
+      <div class="card s18-card"><div class="s18-ic">⚖️</div><h4>Legal AI</h4><p>Reviews full contracts in context.</p></div>
+      <div class="card s18-card"><div class="s18-ic">🩺</div><h4>Healthcare AI</h4><p>Considers complete patient history.</p></div>
+      <div class="card s18-card"><div class="s18-ic">🎓</div><h4>Education</h4><p>Tracks a learner's full progress.</p></div>
+      <div class="card s18-card"><div class="s18-ic">📊</div><h4>Financial Analysis</h4><p>Digests lengthy filings &amp; reports.</p></div>
+      <div class="card s18-card"><div class="s18-ic">🏢</div><h4>Enterprise Search</h4><p>Finds answers across departments.</p></div>
+      <div class="card s18-card"><div class="s18-ic">📄</div><h4>Document Q&amp;A</h4><p>Answers grounded in full text.</p></div>
+      <div class="card s18-card"><div class="s18-ic">🧠</div><h4>Knowledge Bases</h4><p>Combines many linked sources.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 19 — COMMON MYTHS -->
+<!-- ============================================================ -->
+<section class="slide" id="s19" data-index="18">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">19 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Common <span class="grad">Myths</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Click a card to flip it and reveal the reality.</p>
+
+    <div class="s19-cards" data-reveal="scale" data-reveal-delay="3">
+      <div class="s19-flip">
+        <div class="s19-flip-inner">
+          <div class="s19-face front"><span class="s19-badge myth">MYTH</span><p>AI remembers everything forever.</p></div>
+          <div class="s19-face back"><span class="s19-badge reality">REALITY</span><p>It only accesses the current context window unless persistent memory is enabled.</p></div>
+        </div>
+      </div>
+      <div class="s19-flip">
+        <div class="s19-flip-inner">
+          <div class="s19-face front"><span class="s19-badge myth">MYTH</span><p>Bigger context always means smarter answers.</p></div>
+          <div class="s19-face back"><span class="s19-badge reality">REALITY</span><p>More context helps recall, but reasoning quality depends on the model, not just size.</p></div>
+        </div>
+      </div>
+      <div class="s19-flip">
+        <div class="s19-flip-inner">
+          <div class="s19-face front"><span class="s19-badge myth">MYTH</span><p>Tokens are the same as words.</p></div>
+          <div class="s19-face back"><span class="s19-badge reality">REALITY</span><p>Tokens are text fragments — punctuation and word pieces both count as tokens.</p></div>
+        </div>
+      </div>
+      <div class="s19-flip">
+        <div class="s19-flip-inner">
+          <div class="s19-face front"><span class="s19-badge myth">MYTH</span><p>Large context windows replace the need for RAG.</p></div>
+          <div class="s19-face back"><span class="s19-badge reality">REALITY</span><p>RAG still wins for fresh, external, or massive knowledge sources.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 20 — BEST PRACTICES -->
+<!-- ============================================================ -->
+<section class="slide" id="s20" data-index="19">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">20 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">Best <span class="grad">Practices</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Use the context window wisely — every token counts.</p>
+
+    <ul class="s20-checklist" data-reveal="scale" data-reveal-delay="3" id="s20List">
+      <li><span class="s20-check">✓</span>Keep prompts organized</li>
+      <li><span class="s20-check">✓</span>Use clear headings</li>
+      <li><span class="s20-check">✓</span>Remove unnecessary repetition</li>
+      <li><span class="s20-check">✓</span>Summarize long conversations</li>
+      <li><span class="s20-check">✓</span>Use retrieval systems for external knowledge</li>
+      <li><span class="s20-check">✓</span>Structure inputs clearly</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 21 — FUTURE OF CONTEXT WINDOWS -->
+<!-- ============================================================ -->
+<section class="slide" id="s21" data-index="20">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">21 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1">The Future of <span class="grad">Context Windows</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">The next generation of models is expanding what "context" even means.</p>
+
+    <div class="s21-timeline" data-reveal="scale" data-reveal-delay="3">
+      <div class="s21-line"></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Larger Contexts</h4><p>Millions of tokens, entire codebases at once.</p></div></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Smarter Retrieval</h4><p>Hybrid systems blend context with search.</p></div></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Persistent Memory</h4><p>AI that remembers you across sessions.</p></div></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Agentic AI</h4><p>Systems that plan &amp; act over long horizons.</p></div></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Multimodal Reasoning</h4><p>Text, code, images &amp; audio — unified.</p></div></div>
+      <div class="s21-item"><div class="s21-dot"></div><div class="s21-label"><h4>Hierarchical Memory</h4><p>Layers of short &amp; long-term recall.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 22 — SUMMARY -->
+<!-- ============================================================ -->
+<section class="slide" id="s22" data-index="21">
+  <div class="slide-inner">
+    <div class="section-num" data-reveal="fade-up">22 / 23</div>
+    <h2 class="title" data-reveal="fade-up" data-reveal-delay="1"><span class="grad">Summary</span></h2>
+    <p class="lede" data-reveal="fade-up" data-reveal-delay="2">Everything we covered, distilled into one chain of ideas.</p>
+
+    <div class="s22-chain" data-reveal="scale" data-reveal-delay="3">
+      <div class="s22-node">Context Window</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node">Working Memory</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node">Measured in Tokens</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node">Limited Capacity</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node">Older Information Expires</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node">Memory is Different</div>
+      <div class="s22-arrow">↓</div>
+      <div class="s22-node final">RAG Complements Context</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 23 — ENDING SCREEN -->
+<!-- ============================================================ -->
+<section class="slide" id="s23" data-index="22">
+  <canvas id="s23Canvas" class="s23-canvas"></canvas>
+  <div class="slide-inner">
+    <div class="eyebrow" data-reveal="fade-down">Context Windows · A Visual Guide</div>
+    <h1 class="title" data-reveal="blur" data-reveal-delay="1">Thank You</h1>
+    <p class="subtitle" data-reveal="fade-up" data-reveal-delay="2">Questions?</p>
+    <div class="s23-cta" data-reveal="fade-up" data-reveal-delay="3">
+      <button class="btn ghost" id="restartBtn">Restart the Journey ↺</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+'use strict';
+/* ==========================================================================
+   SECTION METADATA
+   ========================================================================== */
+const SECTION_LABELS = [
+  'Intro','Definition','Human Memory','Contents','Tokens','Words vs Tokens',
+  'Pipeline','Lifecycle','Full Window','Real Example','Window Sizes','Why Bigger',
+  'Context vs Memory','RAG','Attention','Cost','Compression','Applications',
+  'Myths','Best Practices','Future','Summary','Thank You'
+];
+
+/* ==========================================================================
+   BACKGROUND — NEURAL NETWORK / FLOATING PARTICLE CANVAS
+   ========================================================================== */
+class NeuralBackground{
+  constructor(canvas){
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.nodes = [];
+    this.mouse = { x:-9999, y:-9999 };
+    this.running = true;
+    this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.resize();
+    this.buildNodes();
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; });
+    document.addEventListener('visibilitychange', () => { this.running = !document.hidden; });
+    if(!this.reduceMotion) this.loop();
+  }
+  resize(){
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.w = window.innerWidth; this.h = window.innerHeight;
+    this.canvas.width = this.w * this.dpr;
+    this.canvas.height = this.h * this.dpr;
+    this.canvas.style.width = this.w + 'px';
+    this.canvas.style.height = this.h + 'px';
+    this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+  }
+  buildNodes(){
+    const count = Math.max(28, Math.min(70, Math.round((this.w * this.h) / 24000)));
+    this.nodes = Array.from({length: count}, () => ({
+      x: Math.random() * this.w,
+      y: Math.random() * this.h,
+      vx: (Math.random() - 0.5) * 0.18,
+      vy: (Math.random() - 0.5) * 0.18,
+      r: Math.random() * 1.6 + 0.8,
+      hue: Math.random() > 0.5 ? '59,130,246' : (Math.random() > 0.5 ? '34,211,238' : '168,85,247')
+    }));
+  }
+  step(){
+    const { ctx, w, h, nodes } = this;
+    ctx.clearRect(0,0,w,h);
+    const maxDist = 150;
+    for(let i=0;i<nodes.length;i++){
+      const n = nodes[i];
+      n.x += n.vx; n.y += n.vy;
+      if(n.x < -20) n.x = w+20; if(n.x > w+20) n.x = -20;
+      if(n.y < -20) n.y = h+20; if(n.y > h+20) n.y = -20;
+      const dxm = n.x - this.mouse.x, dym = n.y - this.mouse.y;
+      const distM = Math.sqrt(dxm*dxm+dym*dym);
+      if(distM < 140){
+        const f = (140-distM)/140 * 0.02;
+        n.vx += (dxm/distM||0) * f; n.vy += (dym/distM||0) * f;
+      }
+      n.vx *= 0.995; n.vy *= 0.995;
+    }
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x-b.x, dy = a.y-b.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if(dist < maxDist){
+          const op = (1 - dist/maxDist) * 0.16;
+          ctx.strokeStyle = `rgba(120,170,255,${op})`;
+          ctx.lineWidth = 0.6;
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+      }
+    }
+    for(const n of nodes){
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${n.hue},0.85)`;
+      ctx.shadowColor = `rgba(${n.hue},0.9)`;
+      ctx.shadowBlur = 6;
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+  loop(){
+    if(this.running) this.step();
+    requestAnimationFrame(() => this.loop());
+  }
+}
+
+/* ==========================================================================
+   NAVIGATION CONTROLLER
+   ========================================================================== */
+class PresentationNav{
+  constructor(){
+    this.main = document.getElementById('main');
+    this.slides = Array.from(document.querySelectorAll('section.slide'));
+    this.total = this.slides.length;
+    this.current = 0;
+    this.dotsWrap = document.getElementById('navDots');
+    this.progressFill = document.getElementById('progressFill');
+    this.curIndexEl = document.getElementById('curIndex');
+    this.totalIndexEl = document.getElementById('totalIndex');
+    this.curLabelEl = document.getElementById('curLabel');
+    this.scrollHint = document.getElementById('scrollHint');
+    this.buildDots();
+    this.bindObserver();
+    this.bindControls();
+    this.totalIndexEl.textContent = String(this.total).padStart(2,'0');
+    this.setActive(0);
+  }
+  buildDots(){
+    this.slides.forEach((s, i) => {
+      const b = document.createElement('button');
+      b.setAttribute('data-label', SECTION_LABELS[i] || ('Section ' + (i+1)));
+      b.addEventListener('click', () => this.goTo(i));
+      this.dotsWrap.appendChild(b);
+    });
+    this.dots = Array.from(this.dotsWrap.children);
+  }
+  bindObserver(){
+    const opts = { root: this.main, threshold: 0.5 };
+    this.observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const idx = this.slides.indexOf(entry.target);
+        if(entry.isIntersecting){
+          entry.target.classList.add('in-view');
+          if(entry.intersectionRatio > 0.5) this.setActive(idx);
+          this.dispatchSectionEnter(idx);
+        }
+      });
+    }, opts);
+    this.slides.forEach(s => this.observer.observe(s));
+  }
+  dispatchSectionEnter(idx){
+    window.dispatchEvent(new CustomEvent('section-enter', { detail: { index: idx } }));
+  }
+  setActive(idx){
+    if(idx === this.current && this.dots[idx] && this.dots[idx].classList.contains('active')) return;
+    this.current = idx;
+    this.dots.forEach((d,i) => d.classList.toggle('active', i === idx));
+    this.progressFill.style.width = ((idx) / (this.total - 1) * 100) + '%';
+    this.curIndexEl.textContent = String(idx+1).padStart(2,'0');
+    this.curLabelEl.textContent = SECTION_LABELS[idx] || '';
+    document.body.classList.toggle('hide-chrome', false);
+    if(this.scrollHint) this.scrollHint.style.opacity = idx === 0 ? '0.8' : '0';
+  }
+  goTo(idx){
+    idx = Math.max(0, Math.min(this.total - 1, idx));
+    this.slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  next(){ this.goTo(this.current + 1); }
+  prev(){ this.goTo(this.current - 1); }
+  bindControls(){
+    document.getElementById('btnNext').addEventListener('click', () => this.next());
+    document.getElementById('btnPrev').addEventListener('click', () => this.prev());
+    window.addEventListener('keydown', (e) => {
+      if(['ArrowDown','PageDown',' '].includes(e.key)){ e.preventDefault(); this.next(); }
+      else if(['ArrowUp','PageUp'].includes(e.key)){ e.preventDefault(); this.prev(); }
+      else if(e.key === 'Home'){ e.preventDefault(); this.goTo(0); }
+      else if(e.key === 'End'){ e.preventDefault(); this.goTo(this.total-1); }
+    });
+    // Basic swipe support for touch devices
+    let touchStartY = null;
+    this.main.addEventListener('touchstart', (e) => { touchStartY = e.touches[0].clientY; }, { passive:true });
+    this.main.addEventListener('touchend', (e) => {
+      if(touchStartY === null) return;
+      const dy = touchStartY - e.changedTouches[0].clientY;
+      touchStartY = null;
+    }, { passive:true });
+  }
+}
+
+/* ==========================================================================
+   REUSABLE HELPERS
+   ========================================================================== */
+function animateCount(el, target, duration=1600, suffix=''){
+  if(el._counted) return; el._counted = true;
+  const start = performance.now();
+  const from = 0;
+  function tick(now){
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1-p, 3);
+    const val = Math.round(from + (target - from) * eased);
+    el.textContent = val.toLocaleString() + suffix;
+    if(p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function typewriter(el, text, speed=32){
+  if(el._typed) return; el._typed = true;
+  el.textContent = '';
+  let i = 0;
+  function tick(){
+    if(i <= text.length){
+      el.textContent = text.slice(0, i);
+      i++;
+      setTimeout(tick, speed);
+    }
+  }
+  tick();
+}
+
+/* ==========================================================================
+   INIT
+   ========================================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  new NeuralBackground(document.getElementById('bg-canvas'));
+  const nav = new PresentationNav();
+
+  window.addEventListener('section-enter', (e) => {
+    const idx = e.detail.index;
+    if(typeof window['initSection' + (idx+1)] === 'function'){
+      window['initSection' + (idx+1)](document.getElementById('s' + (idx+1)));
+    }
+  });
+});
+
+/* ==========================================================================
+   SECTION 1 INIT — HERO
+   ========================================================================== */
+window.initSection1 = function(){
+  const btn = document.getElementById('heroStartBtn');
+  if(btn && !btn._bound){
+    btn._bound = true;
+    btn.addEventListener('click', () => {
+      document.getElementById('s2').scrollIntoView({ behavior:'smooth' });
+    });
+  }
+};
+
+/* ==========================================================================
+   SECTION 3 INIT — WHITEBOARD / STICKY NOTES CYCLE
+   ========================================================================== */
+window.initSection3 = function(){
+  const svg = document.querySelector('#s3-notes');
+  if(!svg || svg._running) return;
+  svg._running = true;
+  const notes = Array.from(svg.querySelectorAll('.s3-note'));
+  const caption = document.getElementById('s3Caption');
+  // 6 slots arranged in a 3x2 grid on the whiteboard
+  const positions = [
+    {x:70, y:56}, {x:200, y:56}, {x:330, y:56},
+    {x:70, y:176}, {x:200, y:176}, {x:330, y:176}
+  ];
+  notes.forEach((n,i) => { n.style.transform = `translate(${positions[i].x}px,${positions[i].y}px) scale(.001)`; n.style.opacity = '0'; });
+
+  let step = 0;
+  const messages = [
+    'A new sticky note appears for each message...',
+    'The whiteboard keeps filling up...',
+    'Almost full — six notes now on the board...',
+    'The board is full. A new note arrives...',
+    'The oldest note slides away to make room...',
+    'The AI can no longer see what was erased.'
+  ];
+
+  function showNote(i){
+    const n = notes[i];
+    n.style.transition = 'transform .5s var(--ease), opacity .5s var(--ease)';
+    n.style.transform = `translate(${positions[i].x}px,${positions[i].y}px) scale(1)`;
+    n.style.opacity = '1';
+  }
+  function removeOldest(i){
+    const n = notes[i];
+    n.style.transition = 'transform .6s var(--ease), opacity .6s var(--ease)';
+    n.style.transform = `translate(${positions[i].x - 60}px,${positions[i].y - 40}px) scale(.4) rotate(-15deg)`;
+    n.style.opacity = '0';
+  }
+
+  function tick(){
+    if(!document.getElementById('s3').classList.contains('in-view')){ return; }
+    if(step < notes.length){
+      showNote(step);
+      caption.textContent = messages[Math.min(step, messages.length-1)];
+      step++;
+      setTimeout(tick, 900);
+    } else {
+      caption.textContent = messages[4];
+      removeOldest(0);
+      setTimeout(() => {
+        showNote(0);
+        caption.textContent = messages[5];
+      }, 700);
+      setTimeout(() => { step = 0; tick(); }, 3200);
+    }
+  }
+  tick();
+};
+
+/* ==========================================================================
+   TOKENIZER SIMULATOR (simplified, for illustration purposes only)
+   Splits on whitespace, then separates punctuation and long words into
+   sub-word-like chunks so the visualization feels authentic.
+   ========================================================================== */
+function simulateTokenize(sentence){
+  const words = sentence.split(/\s+/).filter(Boolean);
+  const tokens = [];
+  words.forEach(word => {
+    // separate trailing punctuation
+    const m = word.match(/^([\w']*)([.,!?;:]*)$/);
+    let core = m ? m[1] : word;
+    const punct = m ? m[2] : '';
+    // split contractions like "can't" / "it's"
+    const parts = core.split(/(')/).filter(Boolean);
+    let rebuilt = [];
+    if(parts.length > 1){
+      rebuilt.push({ text: parts[0], type:'word' });
+      rebuilt.push({ text: parts.slice(1).join(''), type:'sub' });
+    } else if(core.length > 8){
+      const mid = Math.ceil(core.length/2);
+      rebuilt.push({ text: core.slice(0,mid), type:'word' });
+      rebuilt.push({ text: core.slice(mid), type:'sub' });
+    } else if(core){
+      rebuilt.push({ text: core, type:'word' });
+    }
+    tokens.push(...rebuilt);
+    if(punct){
+      punct.split('').forEach(p => tokens.push({ text:p, type:'punct' }));
+    }
+  });
+  return tokens;
+}
+
+/* ==========================================================================
+   SECTION 5 INIT — UNDERSTANDING TOKENS
+   ========================================================================== */
+window.initSection5 = function(){
+  const sentenceEl = document.getElementById('s5Sentence');
+  if(!sentenceEl || sentenceEl._done) return;
+  sentenceEl._done = true;
+  const sentence = sentenceEl.textContent.trim();
+  const words = sentence.split(/\s+/);
+  const tokens = simulateTokenize(sentence);
+  const wordsRow = document.getElementById('s5WordsRow');
+  const tokensRow = document.getElementById('s5TokensRow');
+
+  words.forEach((w,i) => {
+    const chip = document.createElement('span');
+    chip.className = 's5-chip word';
+    chip.textContent = w;
+    chip.style.animationDelay = (i*0.08 + 0.2) + 's';
+    wordsRow.appendChild(chip);
+  });
+  tokens.forEach((t,i) => {
+    const chip = document.createElement('span');
+    chip.className = 's5-chip token';
+    chip.textContent = t.text;
+    chip.style.animationDelay = (i*0.06 + 0.9) + 's';
+    tokensRow.appendChild(chip);
+  });
+
+  setTimeout(() => {
+    animateCount(document.getElementById('s5CharCount'), sentence.length, 1200);
+    animateCount(document.getElementById('s5WordCount'), words.length, 1200);
+    animateCount(document.getElementById('s5TokenCount'), tokens.length, 1200);
+  }, 1500);
+};
+
+/* ==========================================================================
+   SECTION 6 INIT — WORDS VS TOKENS (interactive)
+   ========================================================================== */
+window.initSection6 = function(){
+  const buttons = document.querySelectorAll('.s6-pick');
+  const display = document.getElementById('s6TokenDisplay');
+  if(!display) return;
+
+  function render(sentence){
+    display.innerHTML = '';
+    const tokens = simulateTokenize(sentence);
+    tokens.forEach((t,i) => {
+      const chip = document.createElement('span');
+      chip.className = 's6-token-chip ' + t.type;
+      chip.textContent = t.text;
+      chip.style.animationDelay = (i * 0.06) + 's';
+      display.appendChild(chip);
+    });
+  }
+
+  if(!display._bound){
+    display._bound = true;
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render(btn.getAttribute('data-sentence'));
+      });
+    });
+  }
+  if(!display._rendered){
+    display._rendered = true;
+    render(buttons[0].getAttribute('data-sentence'));
+  }
+};
+
+/* ==========================================================================
+   SECTION 7 INIT — PIPELINE STAGE HIGHLIGHT
+   ========================================================================== */
+window.initSection7 = function(){
+  const pipeline = document.getElementById('s7Pipeline');
+  if(!pipeline || pipeline._running) return;
+  pipeline._running = true;
+  const nodes = Array.from(pipeline.querySelectorAll('.s7-stage-node'));
+  let i = 0;
+  function highlight(){
+    if(!document.getElementById('s7').classList.contains('in-view')) return;
+    nodes.forEach(n => n.classList.remove('active'));
+    nodes[i % nodes.length].classList.add('active');
+    i++;
+    setTimeout(highlight, 550);
+  }
+  setTimeout(highlight, 1900);
+};
+
+/* ==========================================================================
+   SECTION 8 INIT — LIFECYCLE TIMELINE
+   ========================================================================== */
+window.initSection8 = function(){
+  const timeline = document.getElementById('s8Timeline');
+  const barFill = document.getElementById('s8BarFill');
+  const percentEl = document.getElementById('s8Percent');
+  if(!timeline || timeline._running) return;
+  timeline._running = true;
+
+  const labels = ['"Hi there!"','"Explain APIs"','"Show an example"','"What about errors?"','"Summarize this"','"Add tests"','"Deploy it"','"Any final notes?"'];
+  let idx = 0;
+  const maxVisible = 5;
+
+  function step(){
+    if(!document.getElementById('s8').classList.contains('in-view')) return;
+    const chip = document.createElement('div');
+    chip.className = 's8-msg-chip';
+    chip.textContent = labels[idx % labels.length];
+    timeline.appendChild(chip);
+    idx++;
+
+    const children = Array.from(timeline.children);
+    const pct = Math.min(100, Math.round((children.length / maxVisible) * 100));
+    barFill.style.width = pct + '%';
+    percentEl.textContent = pct + '%';
+
+    if(children.length > maxVisible){
+      const oldest = children[0];
+      oldest.classList.add('expiring');
+      setTimeout(() => oldest.remove(), 550);
+    }
+    setTimeout(step, 1300);
+  }
+  setTimeout(step, 600);
+};
+
+/* ==========================================================================
+   SECTION 9 INIT — CONVEYOR BELT
+   ========================================================================== */
+window.initSection9 = function(){
+  const track = document.getElementById('s9Track');
+  if(!track || track._running) return;
+  track._running = true;
+  const labels = ['"Hello!"','Prompt #2','User Reply','Assistant Reply','Code Snippet','Follow-up','Clarification','New Question','Latest Message'];
+  let i = 0;
+  function addItem(){
+    if(!document.getElementById('s9').classList.contains('in-view')) return;
+    const item = document.createElement('div');
+    item.className = 's9-belt-item';
+    item.textContent = labels[i % labels.length];
+    i++;
+    track.appendChild(item);
+    const children = Array.from(track.children);
+    const widthPerItem = 130;
+    const maxItems = 5;
+    if(children.length > maxItems){
+      track.style.transition = 'transform .7s var(--ease)';
+      track.style.transform = `translateX(-${(children.length - maxItems) * widthPerItem}px)`;
+      const oldest = children[0];
+      oldest.classList.add('leaving');
+    }
+    setTimeout(addItem, 1400);
+  }
+  addItem();
+};
+
+/* ==========================================================================
+   SECTION 10 INIT — REAL EXAMPLE (typewriter answers)
+   ========================================================================== */
+window.initSection10 = function(){
+  const ans1 = document.getElementById('s10Ans1');
+  const ans2 = document.getElementById('s10Ans2');
+  if(!ans1 || ans1._done) return;
+  ans1._done = true;
+  setTimeout(() => typewriter(ans1, 'Your favorite language is Rust! 🦀', 28), 400);
+  setTimeout(() => typewriter(ans2, "I don't have that information in our current conversation.", 28), 900);
+};
+
+/* ==========================================================================
+   SECTION 12 INIT — WHY BIGGER CONTEXT MATTERS (card detail toggle)
+   ========================================================================== */
+window.initSection12 = function(){
+  const cards = document.querySelectorAll('.s12-card');
+  const detail = document.getElementById('s12Detail');
+  if(!detail || detail._bound) return;
+  detail._bound = true;
+  cards.forEach(card => {
+    card.addEventListener('click', () => {
+      cards.forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      detail.style.opacity = '0';
+      setTimeout(() => {
+        detail.textContent = card.getAttribute('data-detail');
+        detail.style.opacity = '1';
+      }, 180);
+    });
+  });
+};
+
+/* ==========================================================================
+   SECTION 15 INIT — ATTENTION MECHANISM (interactive hover)
+   ========================================================================== */
+window.initSection15 = function(){
+  const svg = document.getElementById('s15Svg');
+  if(!svg || svg._built) return;
+  svg._built = true;
+
+  const words = ['The','context','window','stores','it','so','the','model','remembers'];
+  // Attention map: index -> array of indices it attends to strongly
+  const attention = {
+    4: [1,2],   // "it" attends to "context","window"
+    7: [1,2,3], // "model" attends to context/window/stores
+    8: [4,7],   // "remembers" attends to "it","model"
+  };
+  const n = words.length;
+  const gap = 780 / (n + 1);
+  const y = 170;
+  const positions = words.map((w,i) => ({ x: gap * (i+1), y }));
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs){
+    const e = document.createElementNS(NS, tag);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  // draw baseline connecting lines (all pairs faint) for tokens with defined attention
+  const linesGroup = el('g', {});
+  svg.appendChild(linesGroup);
+  const lineRefs = {};
+
+  Object.keys(attention).forEach(srcIdx => {
+    srcIdx = parseInt(srcIdx);
+    attention[srcIdx].forEach(tgtIdx => {
+      const line = el('line', {
+        x1: positions[srcIdx].x, y1: positions[srcIdx].y - 26,
+        x2: positions[tgtIdx].x, y2: positions[tgtIdx].y - 26,
+        class: 's15-attn-line'
+      });
+      linesGroup.appendChild(line);
+      lineRefs[srcIdx] = lineRefs[srcIdx] || [];
+      lineRefs[srcIdx].push({ line, tgtIdx });
+    });
+  });
+
+  // draw token boxes
+  const tokenRefs = [];
+  words.forEach((w,i) => {
+    const g = el('g', {});
+    const width = Math.max(46, w.length * 10 + 20);
+    const rect = el('rect', {
+      x: positions[i].x - width/2, y: positions[i].y - 44, width, height: 32, rx: 10,
+      class: 's15-token-rect', fill:'rgba(255,255,255,0.04)', stroke:'rgba(255,255,255,0.15)', 'stroke-width':1.2
+    });
+    const text = el('text', { x: positions[i].x, y: positions[i].y - 23, 'text-anchor':'middle', class:'s15-token-text' });
+    text.textContent = w;
+    g.appendChild(rect); g.appendChild(text);
+    svg.appendChild(g);
+    tokenRefs.push({ rect, i });
+
+    g.addEventListener('mouseenter', () => {
+      tokenRefs.forEach(t => t.rect.classList.remove('active','target'));
+      Object.values(linesGroup.children).forEach(l => l.classList.remove('active'));
+      rect.classList.add('active');
+      const targets = attention[i] || [];
+      targets.forEach(tIdx => tokenRefs[tIdx].rect.classList.add('target'));
+      (lineRefs[i] || []).forEach(ref => ref.line.classList.add('active'));
+    });
+    g.addEventListener('mouseleave', () => {
+      rect.classList.remove('active');
+      (attention[i]||[]).forEach(tIdx => tokenRefs[tIdx].rect.classList.remove('target'));
+      (lineRefs[i] || []).forEach(ref => ref.line.classList.remove('active'));
+    });
+  });
+
+  // Auto-demo: briefly highlight "it" -> context/window once on first view
+  setTimeout(() => {
+    const idx = 4;
+    tokenRefs[idx].rect.dispatchEvent(new Event('mouseenter'));
+    setTimeout(() => tokenRefs[idx].rect.dispatchEvent(new Event('mouseleave')), 1800);
+  }, 900);
+};
+
+/* ==========================================================================
+   SECTION 16 INIT — COST OF LONG CONTEXT (animated graph)
+   ========================================================================== */
+window.initSection16 = function(){
+  const svg = document.getElementById('s16Svg');
+  if(!svg || svg._built) return;
+  svg._built = true;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs){
+    const e = document.createElementNS(NS, tag);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  const w = 560, h = 220, pad = 36;
+  // axes
+  svg.appendChild(el('line', { x1:pad, y1:h-pad, x2:w-16, y2:h-pad, stroke:'rgba(255,255,255,.2)', 'stroke-width':1 }));
+  svg.appendChild(el('line', { x1:pad, y1:16, x2:pad, y2:h-pad, stroke:'rgba(255,255,255,.2)', 'stroke-width':1 }));
+  const xLabel = el('text', { x:w/2, y:h-6, 'text-anchor':'middle', fill:'#6b7394', 'font-size':11 });
+  xLabel.textContent = 'Context length →';
+  svg.appendChild(xLabel);
+  const yLabel = el('text', { x:14, y:h/2, 'text-anchor':'middle', fill:'#6b7394', 'font-size':11, transform:`rotate(-90 14 ${h/2})` });
+  yLabel.textContent = 'Cost / Latency';
+  svg.appendChild(yLabel);
+
+  // curve (quadratic growth), drawn via path with stroke-dash reveal
+  const points = [];
+  const N = 24;
+  for(let i=0;i<=N;i++){
+    const x = pad + (i/N) * (w - pad - 20);
+    const t = i/N;
+    const y = (h-pad) - Math.pow(t, 1.8) * (h - pad - 24);
+    points.push([x,y]);
+  }
+  const dPath = points.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaPath = dPath + ` L ${points[points.length-1][0]},${h-pad} L ${points[0][0]},${h-pad} Z`;
+
+  const defs = el('defs', {});
+  const grad = el('linearGradient', { id:'s16AreaGrad', x1:'0', y1:'0', x2:'0', y2:'1' });
+  grad.appendChild(el('stop', { offset:'0%', 'stop-color':'#f87171', 'stop-opacity':'0.35' }));
+  grad.appendChild(el('stop', { offset:'100%', 'stop-color':'#f87171', 'stop-opacity':'0' }));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  const area = el('path', { d:areaPath, fill:'url(#s16AreaGrad)', opacity:'0' });
+  svg.appendChild(area);
+
+  const curve = el('path', { d:dPath, fill:'none', stroke:'#f87171', 'stroke-width':2.5, 'stroke-linecap':'round' });
+  const len = 700;
+  curve.style.strokeDasharray = len;
+  curve.style.strokeDashoffset = len;
+  svg.appendChild(curve);
+
+  const dot = el('circle', { r:5, fill:'#fff', style:'filter:drop-shadow(0 0 6px #f87171)' });
+  svg.appendChild(dot);
+
+  // animate draw-on when in view
+  function animate(){
+    if(!document.getElementById('s16').classList.contains('in-view')) return;
+    curve.style.transition = 'stroke-dashoffset 2s var(--ease-soft)';
+    curve.style.strokeDashoffset = '0';
+    area.style.transition = 'opacity 1.5s ease 0.6s';
+    area.style.opacity = '1';
+
+    const start = performance.now();
+    function moveDot(now){
+      const p = Math.min(1, (now - start) / 2000);
+      const idx = Math.min(points.length-1, Math.floor(p * points.length));
+      dot.setAttribute('cx', points[idx][0]);
+      dot.setAttribute('cy', points[idx][1]);
+      if(p < 1) requestAnimationFrame(moveDot);
+    }
+    requestAnimationFrame(moveDot);
+  }
+  setTimeout(animate, 300);
+};
+
+/* ==========================================================================
+   SECTION 19 INIT — MYTH FLIP CARDS
+   ========================================================================== */
+window.initSection19 = function(){
+  const flips = document.querySelectorAll('.s19-flip');
+  flips.forEach(f => {
+    if(f._bound) return;
+    f._bound = true;
+    f.addEventListener('click', () => f.classList.toggle('flipped'));
+  });
+};
+
+/* ==========================================================================
+   SECTION 20 INIT — BEST PRACTICES CHECKLIST
+   ========================================================================== */
+window.initSection20 = function(){
+  const list = document.getElementById('s20List');
+  if(!list || list.classList.contains('animate')) return;
+  list.classList.add('animate');
+};
+
+/* ==========================================================================
+   SECTION 23 INIT — ENDING SCREEN (dedicated neural canvas + restart)
+   ========================================================================== */
+window.initSection23 = function(){
+  const canvas = document.getElementById('s23Canvas');
+  const btn = document.getElementById('restartBtn');
+  if(btn && !btn._bound){
+    btn._bound = true;
+    btn.addEventListener('click', () => {
+      document.getElementById('s1').scrollIntoView({ behavior:'smooth' });
+    });
+  }
+  if(!canvas || canvas._running) return;
+  canvas._running = true;
+  const ctx = canvas.getContext('2d');
+  let w, h, nodes;
+  function resize(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = canvas.clientWidth; h = canvas.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  function build(){
+    const count = 46;
+    nodes = Array.from({length:count}, () => ({
+      x: Math.random()*w, y: Math.random()*h,
+      vx:(Math.random()-0.5)*0.25, vy:(Math.random()-0.5)*0.25, r: Math.random()*1.5+1
+    }));
+  }
+  window.addEventListener('resize', () => { resize(); });
+  resize(); build();
+
+  function frame(){
+    if(!document.getElementById('s23').classList.contains('in-view')){
+      requestAnimationFrame(frame); return;
+    }
+    ctx.clearRect(0,0,w,h);
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy;
+      if(n.x<0||n.x>w) n.vx*=-1;
+      if(n.y<0||n.y>h) n.vy*=-1;
+    });
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const a = nodes[i], b = nodes[j];
+        const d = Math.hypot(a.x-b.x, a.y-b.y);
+        if(d < 130){
+          ctx.strokeStyle = `rgba(120,170,255,${(1-d/130)*0.25})`;
+          ctx.lineWidth = 0.6;
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+      }
+    }
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(59,130,246,0.9)';
+      ctx.shadowColor = 'rgba(34,211,238,0.8)'; ctx.shadowBlur = 6;
+      ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+};
+
+/* MARKER:CORE-JS */
+</script>
+</body>
+</html>
