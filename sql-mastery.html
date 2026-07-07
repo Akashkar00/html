@@ -866,6 +866,9 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
  <span class="tok-kw">WHERE</span> created_at &gt;= <span class="tok-fn">NOW</span>() - <span class="tok-kw">INTERVAL</span> <span class="tok-str">'5 minutes'</span>
  <span class="tok-kw">GROUP BY</span> status;</code></pre>
     </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>status</th><th>txn_count</th></tr></thead>
+      <tbody><tr><td>succeeded</td><td>1,204</td></tr><tr><td>failed</td><td>3</td></tr></tbody></table></div>
 
     <div class="subhead reveal"><i class="fa-solid fa-triangle-exclamation ic-danger"></i> 12-13. Common Mistakes &amp; Best Practices</div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Treating SQL as procedural (writing loops mentally) instead of set-based; forgetting that <code class="inline">SELECT *</code> in production code breaks when columns change; assuming all SQL dialects behave identically (they don't — see Section 44 comparison table).</div></div>
@@ -1209,6 +1212,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">WHERE</span> e.department = <span class="tok-str">'Engineering'</span>
   <span class="tok-kw">AND</span> e.hire_date &gt;= <span class="tok-str">'2026-01-01'</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: employees</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>first_name</th><th>last_name</th><th>department</th><th>hire_date</th></tr></thead>
+      <tbody><tr><td>Ada</td><td>Lovelace</td><td>Engineering</td><td>2026-02-10</td></tr><tr><td>Grace</td><td>Hopper</td><td>Engineering</td><td>2019-07-01</td></tr><tr><td>Alan</td><td>Turing</td><td>Research</td><td>2026-03-01</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>first_name</th><th>last_name</th></tr></thead>
+      <tbody><tr><td>Ada</td><td>Lovelace</td></tr></tbody></table></div>
 
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Mixing quoting styles for identifiers (`"Users"` vs `Users`) across environments; inconsistent indentation making long JOIN chains unreadable; forgetting that string literals use single quotes, not double quotes, in ANSI SQL.</div></div>
     <div class="callout best reveal"><i class="fa-solid fa-check callout-icon"></i><div><div class="callout-title">Best Practices</div>Pick one keyword casing style (UPPERCASE is most common) and one identifier style (snake_case) and enforce it with a linter like <code class="inline">sqlfluff</code>.</div></div>
@@ -1330,12 +1339,21 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
     created_at <span class="tok-type">TIMESTAMPTZ</span> <span class="tok-kw">DEFAULT</span> <span class="tok-fn">NOW</span>()
 );</code></pre>
     </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Result: products (new, empty table)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>price</th><th>category</th><th>created_at</th></tr></thead>
+      <tbody><tr><td colspan="5" style="text-align:center;color:var(--muted);font-style:italic;">0 rows — structure created, no data yet</td></tr></tbody></table></div>
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — ALTER</span><button class="copy-btn" data-copy="ALTER TABLE products ADD COLUMN stock INT NOT NULL DEFAULT 0;\nALTER TABLE products ALTER COLUMN name TYPE VARCHAR(200);\nALTER TABLE products DROP COLUMN category;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">ALTER TABLE</span> products <span class="tok-kw">ADD COLUMN</span> stock <span class="tok-type">INT</span> <span class="tok-kw">NOT NULL DEFAULT</span> <span class="tok-num">0</span>;
 <span class="tok-kw">ALTER TABLE</span> products <span class="tok-kw">ALTER COLUMN</span> name <span class="tok-kw">TYPE</span> <span class="tok-type">VARCHAR</span>(<span class="tok-num">200</span>);
 <span class="tok-kw">ALTER TABLE</span> products <span class="tok-kw">DROP COLUMN</span> category;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>name</th><th>category</th></tr></thead>
+      <tbody><tr><td>1</td><td>Keyboard</td><td>Electronics</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After: products (stock added, category dropped)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>stock</th></tr></thead>
+      <tbody><tr><td>1</td><td>Keyboard</td><td>0</td></tr></tbody></table></div>
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — DROP / TRUNCATE / RENAME</span><button class="copy-btn" data-copy="DROP TABLE IF EXISTS old_logs;\nTRUNCATE TABLE session_cache;\nALTER TABLE products RENAME TO items;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">DROP TABLE IF EXISTS</span> old_logs;
@@ -1397,12 +1415,23 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">VALUES</span> (<span class="tok-str">'Mechanical Keyboard'</span>, <span class="tok-num">89.99</span>, <span class="tok-num">120</span>),
        (<span class="tok-str">'USB-C Hub'</span>, <span class="tok-num">34.50</span>, <span class="tok-num">300</span>);</code></pre>
     </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Result: products</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>price</th><th>stock</th></tr></thead>
+      <tbody><tr><td>1</td><td>Mechanical Keyboard</td><td>89.99</td><td>120</td></tr><tr><td>2</td><td>USB-C Hub</td><td>34.50</td><td>300</td></tr></tbody></table></div>
+
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — UPDATE</span><button class="copy-btn" data-copy="UPDATE products\n   SET price = price * 0.9\n WHERE category = 'Clearance';"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">UPDATE</span> products
    <span class="tok-kw">SET</span> price = price * <span class="tok-num">0.9</span>
  <span class="tok-kw">WHERE</span> category = <span class="tok-str">'Clearance'</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>name</th><th>price</th><th>category</th></tr></thead>
+      <tbody><tr><td>1</td><td>Old Monitor</td><td>100.00</td><td>Clearance</td></tr><tr><td>2</td><td>New Monitor</td><td>250.00</td><td>Electronics</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After: products (2 rows affected → only matching row changes)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>price</th><th>category</th></tr></thead>
+      <tbody><tr><td>1</td><td>Old Monitor</td><td>90.00</td><td>Clearance</td></tr><tr><td>2</td><td>New Monitor</td><td>250.00</td><td>Electronics</td></tr></tbody></table></div>
+
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — UPSERT (Postgres)</span><button class="copy-btn" data-copy="INSERT INTO inventory (sku, quantity)\nVALUES ('SKU-100', 50)\nON CONFLICT (sku)\nDO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">INSERT INTO</span> inventory (sku, quantity)
@@ -1410,6 +1439,11 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">ON CONFLICT</span> (sku)
 <span class="tok-kw">DO UPDATE SET</span> quantity = inventory.quantity + <span class="tok-id">EXCLUDED</span>.quantity;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: inventory</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>sku</th><th>quantity</th></tr></thead><tbody><tr><td>SKU-100</td><td>30</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After: inventory (sku already existed → quantities merged, 30 + 50)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>sku</th><th>quantity</th></tr></thead><tbody><tr><td>SKU-100</td><td>80</td></tr></tbody></table></div>
+
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — MERGE (SQL Server / Oracle)</span><button class="copy-btn" data-copy="MERGE INTO inventory AS target\nUSING staging_updates AS source\nON target.sku = source.sku\nWHEN MATCHED THEN UPDATE SET target.quantity = source.quantity\nWHEN NOT MATCHED THEN INSERT (sku, quantity) VALUES (source.sku, source.quantity);"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">MERGE INTO</span> inventory <span class="tok-kw">AS</span> target
@@ -1418,6 +1452,13 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">WHEN MATCHED THEN UPDATE SET</span> target.quantity = source.quantity
 <span class="tok-kw">WHEN NOT MATCHED THEN INSERT</span> (sku, quantity) <span class="tok-kw">VALUES</span> (source.sku, source.quantity);</code></pre>
     </div>
+    <div class="query-flow reveal">
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>sku</th><th>quantity (target)</th></tr></thead><tbody><tr><td>SKU-100</td><td>30</td></tr></tbody></table></div>
+      <div class="flow-arrow"><i class="fa-solid fa-plus"></i></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>sku</th><th>quantity (source)</th></tr></thead><tbody><tr><td>SKU-100</td><td>80</td></tr><tr><td>SKU-200</td><td>15</td></tr></tbody></table></div>
+    </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After MERGE: inventory (SKU-100 updated, SKU-200 inserted)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>sku</th><th>quantity</th></tr></thead><tbody><tr><td>SKU-100</td><td>80</td></tr><tr><td>SKU-200</td><td>15</td></tr></tbody></table></div>
 
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why UPSERT/MERGE Exist</div>Without them, "insert or update" requires a SELECT to check existence, then an INSERT or UPDATE — two round trips with a race condition window between them. UPSERT does it atomically in one statement, which matters enormously under concurrent load.</div></div>
 
@@ -1475,6 +1516,11 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">ORDER BY</span> category
 <span class="tok-kw">LIMIT</span> <span class="tok-num">10</span> <span class="tok-kw">OFFSET</span> <span class="tok-num">20</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products (simplified — 5 rows shown)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>category</th></tr></thead>
+      <tbody><tr><td>1</td><td>Electronics</td></tr><tr><td>2</td><td>Electronics</td></tr><tr><td>3</td><td>Clothing</td></tr><tr><td>4</td><td>Books</td></tr><tr><td>5</td><td>Clothing</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (LIMIT 2 OFFSET 1, for illustration)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>category</th></tr></thead><tbody><tr><td>Clothing</td></tr><tr><td>Electronics</td></tr></tbody></table></div>
 
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div><code class="inline">OFFSET</code> pagination gets slower as the offset grows — the database still scans and discards all skipped rows. In production, prefer <b>keyset pagination</b> (<code class="inline">WHERE id > last_seen_id ORDER BY id LIMIT 10</code>) for large datasets like infinite-scroll feeds.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Using <code class="inline">SELECT DISTINCT *</code> as a lazy fix for a JOIN duplicating rows instead of fixing the join condition; using huge OFFSETs for "page 500" style pagination on multi-million row tables.</div></div>
@@ -1537,6 +1583,15 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
   <span class="tok-kw">AND</span> customer_email <span class="tok-kw">ILIKE</span> <span class="tok-str">'%@company.com'</span>
   <span class="tok-kw">AND</span> cancelled_at <span class="tok-kw">IS NULL</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: orders</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>status</th><th>total</th><th>customer_email</th><th>cancelled_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>paid</td><td>120</td><td>ada@company.com</td><td><i>NULL</i></td></tr>
+      <tr><td>2</td><td>paid</td><td>15</td><td>grace@company.com</td><td><i>NULL</i></td></tr>
+      <tr><td>3</td><td>shipped</td><td>300</td><td>alan@gmail.com</td><td><i>NULL</i></td></tr>
+      <tr><td>4</td><td>shipped</td><td>200</td><td>bob@company.com</td><td>2026-01-05</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (only row 1 satisfies every condition)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>status</th><th>total</th><th>customer_email</th><th>cancelled_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>paid</td><td>120</td><td>ada@company.com</td><td><i>NULL</i></td></tr></tbody></table></div>
 
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Writing <code class="inline">WHERE column = NULL</code> instead of <code class="inline">IS NULL</code> (always evaluates to unknown/false); leading-wildcard <code class="inline">LIKE '%term'</code> patterns that can't use a standard B-tree index; forgetting operator precedence between AND/OR without parentheses.</div></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Optimization Tips</div><code class="inline">IN</code> with a huge static list is fine and often index-friendly; prefer <code class="inline">EXISTS</code> over <code class="inline">IN</code> with a correlated subquery for large subquery result sets, since EXISTS can short-circuit on the first match.</div></div>
@@ -1582,6 +1637,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">ORDER BY</span> price <span class="tok-kw">DESC</span>, name <span class="tok-kw">ASC</span>
 <span class="tok-kw">LIMIT</span> <span class="tok-num">5</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>name</th><th>price</th></tr></thead>
+      <tbody><tr><td>Monitor</td><td>250</td></tr><tr><td>Keyboard</td><td>89</td></tr><tr><td>Headset</td><td>250</td></tr><tr><td>Mouse</td><td>29</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (price DESC, tied prices broken by name ASC)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>price</th></tr></thead>
+      <tbody><tr><td>Headset</td><td>250</td></tr><tr><td>Monitor</td><td>250</td></tr><tr><td>Keyboard</td><td>89</td></tr><tr><td>Mouse</td><td>29</td></tr></tbody></table></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>Sorting large result sets is expensive (often O(n log n)) and can spill to disk if it exceeds memory (`work_mem` in Postgres). An index matching the ORDER BY columns lets the engine skip sorting entirely by reading rows already in order.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Assuming row order is stable without ORDER BY; sorting by a computed/non-indexed expression on huge tables without realizing the performance cost; forgetting NULLs sort differently across engines (Postgres: NULLs last by default in ASC; MySQL: NULLs first).</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -1682,6 +1743,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">FROM</span> orders
 <span class="tok-kw">WHERE</span> created_at &gt;= <span class="tok-fn">CURRENT_DATE</span> - <span class="tok-kw">INTERVAL</span> <span class="tok-str">'30 days'</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: orders (last 30 days)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>total</th><th>created_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>100</td><td>2026-06-20</td></tr><tr><td>2</td><td>50</td><td>2026-06-25</td></tr><tr><td>3</td><td>150</td><td>2026-07-01</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>total_orders</th><th>revenue</th><th>avg_order_value</th><th>spend_volatility</th></tr></thead>
+      <tbody><tr><td>3</td><td>300</td><td>100.00</td><td>50.00</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Confusing COUNT(*) with COUNT(column) when the column has NULLs — they can return different numbers; averaging a column that includes NULLs and being surprised the divisor excludes them.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
     <div class="quiz-card reveal" data-quiz><div class="quiz-q">If a table has 10 rows and column `x` has 3 NULLs, what does COUNT(x) return?</div><div class="quiz-opts">
@@ -1738,6 +1805,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">FROM</span> users
 <span class="tok-kw">WHERE</span> email &lt;&gt; <span class="tok-kw">LOWER</span>(<span class="tok-kw">TRIM</span>(email));</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: users</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>email</th></tr></thead>
+      <tbody><tr><td>1</td><td>&nbsp;Ada@Example.com</td></tr><tr><td>2</td><td>grace@example.com</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (only row 1 needed normalizing)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>normalized_email</th></tr></thead>
+      <tbody><tr><td>1</td><td>ada@example.com</td></tr></tbody></table></div>
     <div class="callout company reveal"><i class="fa-solid fa-building-columns callout-icon"></i><div><div class="callout-title">Real Company Use Case</div>E-commerce platforms use <code class="inline">LOWER(TRIM(email))</code> normalization at write-time (in a trigger or app layer) to prevent duplicate accounts caused by case/whitespace differences — a classic production data-quality fix.</div></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>Wrapping a column in a function inside WHERE (<code class="inline">WHERE LOWER(email) = 'x'</code>) prevents standard indexes from being used unless you create a matching <b>functional/expression index</b>.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -1790,6 +1863,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
       <pre><code><span class="tok-kw">SELECT</span> sku, <span class="tok-kw">ROUND</span>(price * <span class="tok-num">1.0825</span>, <span class="tok-num">2</span>) <span class="tok-kw">AS</span> price_with_tax
 <span class="tok-kw">FROM</span> products;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>sku</th><th>price</th></tr></thead>
+      <tbody><tr><td>SKU-1</td><td>19.99</td></tr><tr><td>SKU-2</td><td>50.00</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>sku</th><th>price_with_tax</th></tr></thead>
+      <tbody><tr><td>SKU-1</td><td>21.64</td></tr><tr><td>SKU-2</td><td>54.13</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Confusing TRUNC and ROUND (truncation always rounds toward zero, never up); integer division silently dropping the decimal part in some engines (<code class="inline">5/2 = 2</code> unless you cast to float/decimal).</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
     <div class="quiz-card reveal" data-quiz><div class="quiz-q">What does FLOOR(4.8) return?</div><div class="quiz-opts">
@@ -1843,6 +1922,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">GROUP BY</span> <span class="tok-num">1</span>
 <span class="tok-kw">ORDER BY</span> <span class="tok-num">1</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: users</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>created_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>2026-05-03</td></tr><tr><td>2</td><td>2026-05-19</td></tr><tr><td>3</td><td>2026-06-02</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>signup_month</th><th>new_users</th></tr></thead>
+      <tbody><tr><td>2026-05-01</td><td>2</td></tr><tr><td>2026-06-01</td><td>1</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Storing all timestamps as naive local time and later realizing daylight saving/timezone bugs corrupt reporting; using string comparisons on dates instead of proper date arithmetic; comparing DATE and TIMESTAMP columns without considering time-of-day truncation.</div></div>
     <div class="callout best reveal"><i class="fa-solid fa-check callout-icon"></i><div><div class="callout-title">Best Practices</div>Always store timestamps in UTC (<code class="inline">TIMESTAMPTZ</code>) and convert to local time only at the display layer.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -1891,6 +1976,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
       <pre><code><span class="tok-kw">SELECT</span> name, <span class="tok-kw">COALESCE</span>(phone, mobile, <span class="tok-str">'No contact info'</span>) <span class="tok-kw">AS</span> contact
 <span class="tok-kw">FROM</span> customers;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: customers</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>name</th><th>phone</th><th>mobile</th></tr></thead>
+      <tbody><tr><td>Ada</td><td><i>NULL</i></td><td>555-0101</td></tr><tr><td>Grace</td><td>555-0202</td><td><i>NULL</i></td></tr><tr><td>Alan</td><td><i>NULL</i></td><td><i>NULL</i></td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>contact</th></tr></thead>
+      <tbody><tr><td>Ada</td><td>555-0101</td></tr><tr><td>Grace</td><td>555-0202</td></tr><tr><td>Alan</td><td>No contact info</td></tr></tbody></table></div>
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why It Exists</div><code class="inline">NULLIF</code> is commonly used to prevent divide-by-zero errors: <code class="inline">total / NULLIF(count, 0)</code> safely returns NULL instead of crashing when count is zero.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Using <code class="inline">= NULL</code> instead of <code class="inline">IS NULL</code>; assuming COALESCE evaluates all arguments (it short-circuits — but be aware if arguments have side effects via functions); mixing incompatible types inside COALESCE (some engines require matching types).</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -1930,6 +2021,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
   <span class="tok-kw">END AS</span> price_tier
 <span class="tok-kw">FROM</span> products;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>name</th><th>price</th></tr></thead>
+      <tbody><tr><td>USB Cable</td><td>8</td></tr><tr><td>Mouse</td><td>29</td></tr><tr><td>Monitor</td><td>250</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>price</th><th>price_tier</th></tr></thead>
+      <tbody><tr><td>USB Cable</td><td>8</td><td>Budget</td></tr><tr><td>Mouse</td><td>29</td><td>Standard</td></tr><tr><td>Monitor</td><td>250</td><td>Premium</td></tr></tbody></table></div>
     <div class="callout company reveal"><i class="fa-solid fa-building-columns callout-icon"></i><div><div class="callout-title">Real Company Use Case</div>Conditional aggregation with CASE is the classic "pivot without PIVOT" pattern: <code class="inline">SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END)</code> is used constantly in dashboard queries to build multiple metric columns from one pass over the data.</div></div>
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — conditional aggregation</span><button class="copy-btn" data-copy="SELECT\n  COUNT(*) AS total,\n  SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paid_count,\n  SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) AS refunded_count\nFROM orders;"><i class="fa-regular fa-copy"></i> Copy</button></div>
@@ -1939,6 +2036,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
   <span class="tok-kw">SUM</span>(<span class="tok-kw">CASE WHEN</span> status = <span class="tok-str">'refunded'</span> <span class="tok-kw">THEN</span> <span class="tok-num">1</span> <span class="tok-kw">ELSE</span> <span class="tok-num">0</span> <span class="tok-kw">END</span>) <span class="tok-kw">AS</span> refunded_count
 <span class="tok-kw">FROM</span> orders;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: orders</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>status</th></tr></thead>
+      <tbody><tr><td>1</td><td>paid</td></tr><tr><td>2</td><td>paid</td></tr><tr><td>3</td><td>refunded</td></tr><tr><td>4</td><td>shipped</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>total</th><th>paid_count</th><th>refunded_count</th></tr></thead>
+      <tbody><tr><td>4</td><td>2</td><td>1</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Forgetting the ELSE branch (defaults to NULL, which can silently break downstream logic); nesting too many CASE statements instead of normalizing a lookup table for very large mapping sets.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
     <div class="quiz-card reveal" data-quiz><div class="quiz-q">What does a CASE expression return if no WHEN matches and there's no ELSE?</div><div class="quiz-opts">
@@ -2103,12 +2206,26 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">FROM</span> products
 <span class="tok-kw">WHERE</span> price &gt; (<span class="tok-kw">SELECT AVG</span>(price) <span class="tok-kw">FROM</span> products);</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products (average price = 100)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>name</th><th>price</th></tr></thead>
+      <tbody><tr><td>Keyboard</td><td>90</td></tr><tr><td>Monitor</td><td>250</td></tr><tr><td>Mouse</td><td>30</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>price</th></tr></thead><tbody><tr><td>Monitor</td><td>250</td></tr></tbody></table></div>
+
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — correlated subquery</span><button class="copy-btn" data-copy="SELECT u.name,\n  (SELECT MAX(o.total) FROM orders o WHERE o.user_id = u.id) AS biggest_order\nFROM users u;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">SELECT</span> u.name,
   (<span class="tok-kw">SELECT MAX</span>(o.total) <span class="tok-kw">FROM</span> orders o <span class="tok-kw">WHERE</span> o.user_id = u.id) <span class="tok-kw">AS</span> biggest_order
 <span class="tok-kw">FROM</span> users u;</code></pre>
     </div>
+    <div class="query-flow reveal">
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>id</th><th>name</th></tr></thead><tbody><tr><td>1</td><td>Ada</td></tr><tr><td>2</td><td>Grace</td></tr></tbody></table></div>
+      <div class="flow-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>user_id</th><th>total</th></tr></thead><tbody><tr><td>1</td><td>50</td></tr><tr><td>1</td><td>80</td></tr><tr><td>2</td><td>30</td></tr></tbody></table></div>
+    </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>biggest_order</th></tr></thead>
+      <tbody><tr><td>Ada</td><td>80</td></tr><tr><td>Grace</td><td>30</td></tr></tbody></table></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>Correlated subqueries execute once per outer row in naive execution — on large tables this can be devastating. Modern optimizers (Postgres, SQL Server) often rewrite them into joins automatically, but always verify with EXPLAIN.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Using a subquery when a JOIN or window function would be clearer and faster; scalar subqueries that unexpectedly return more than one row (causes a runtime error).</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2151,6 +2268,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">JOIN</span> high_value_orders h <span class="tok-kw">ON</span> h.user_id = u.id
 <span class="tok-kw">GROUP BY</span> u.name;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: orders</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>user_id</th><th>total</th></tr></thead>
+      <tbody><tr><td>1</td><td>150</td></tr><tr><td>1</td><td>200</td></tr><tr><td>2</td><td>50</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>big_orders</th></tr></thead><tbody><tr><td>Ada</td><td>2</td></tr></tbody></table></div>
+
     <div class="subhead reveal"><i class="fa-solid fa-sitemap ic-purple"></i> Recursive CTE — Org Chart Traversal</div>
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — recursive CTE</span><button class="copy-btn" data-copy="WITH RECURSIVE org_chart AS (\n  SELECT id, name, manager_id, 1 AS depth\n  FROM employees\n  WHERE manager_id IS NULL\n  UNION ALL\n  SELECT e.id, e.name, e.manager_id, oc.depth + 1\n  FROM employees e\n  JOIN org_chart oc ON e.manager_id = oc.id\n)\nSELECT * FROM org_chart ORDER BY depth;"><i class="fa-regular fa-copy"></i> Copy</button></div>
@@ -2167,6 +2290,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 )
 <span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> org_chart <span class="tok-kw">ORDER BY</span> depth;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: employees</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>name</th><th>manager_id</th></tr></thead>
+      <tbody><tr><td>1</td><td>Sam (CEO)</td><td><i>NULL</i></td></tr><tr><td>2</td><td>Ada</td><td>1</td></tr><tr><td>3</td><td>Grace</td><td>2</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>manager_id</th><th>depth</th></tr></thead>
+      <tbody><tr><td>1</td><td>Sam (CEO)</td><td><i>NULL</i></td><td>1</td></tr><tr><td>2</td><td>Ada</td><td>1</td><td>2</td></tr><tr><td>3</td><td>Grace</td><td>2</td><td>3</td></tr></tbody></table></div>
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why It Exists</div>Before recursive CTEs, traversing arbitrary-depth hierarchies (org charts, category trees, bill-of-materials) required application-level loops or database-specific extensions. Recursive CTEs standardized this directly in SQL (ANSI SQL:1999).</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Forgetting a termination condition, causing infinite recursion (most engines cap recursion depth, but it still wastes resources); using UNION instead of UNION ALL unnecessarily de-duplicating and slowing down recursive steps.</div></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>In Postgres, a CTE used to always act as an "optimization fence" (materialized separately); since Postgres 12, non-recursive CTEs can be inlined by the planner unless marked <code class="inline">MATERIALIZED</code>.</div></div>
@@ -2344,6 +2473,11 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">FROM</span> customers
 <span class="tok-kw">WHERE</span> deleted_at <span class="tok-kw">IS NULL</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: customers</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>name</th><th>email</th><th>deleted_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>Ada</td><td>ada@x.co</td><td><i>NULL</i></td></tr><tr><td>2</td><td>Grace</td><td>grace@x.co</td><td>2025-11-01</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output: querying v_active_customers</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>name</th><th>email</th></tr></thead><tbody><tr><td>1</td><td>Ada</td><td>ada@x.co</td></tr></tbody></table></div>
     <div class="code-block reveal">
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — materialized view</span><button class="copy-btn" data-copy="CREATE MATERIALIZED VIEW mv_daily_sales AS\nSELECT DATE_TRUNC('day', created_at) AS day, SUM(total) AS revenue\nFROM orders\nGROUP BY 1;\n\nREFRESH MATERIALIZED VIEW mv_daily_sales;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">CREATE MATERIALIZED VIEW</span> mv_daily_sales <span class="tok-kw">AS</span>
@@ -2432,6 +2566,16 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">CREATE UNIQUE INDEX</span> idx_users_email <span class="tok-kw">ON</span> users (email);
 <span class="tok-kw">CREATE INDEX</span> idx_active_jobs <span class="tok-kw">ON</span> jobs (status) <span class="tok-kw">WHERE</span> status = <span class="tok-str">'pending'</span>;</code></pre>
     </div>
+    <div class="code-block reveal">
+      <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — before/after the index</span><button class="copy-btn" data-copy="EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;"><i class="fa-regular fa-copy"></i> Copy</button></div>
+      <pre><code><span class="tok-kw">EXPLAIN ANALYZE SELECT</span> * <span class="tok-kw">FROM</span> orders <span class="tok-kw">WHERE</span> user_id = <span class="tok-num">42</span>;</code></pre>
+    </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: idx_orders_user_created does not exist yet</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>Plan</th><th>Rows Scanned</th><th>Time</th></tr></thead>
+      <tbody><tr><td>Seq Scan on orders</td><td>5,000,000 (entire table)</td><td>842 ms</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After: idx_orders_user_created(user_id, created_at) created</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>Plan</th><th>Rows Scanned</th><th>Time</th></tr></thead>
+      <tbody><tr><td>Index Scan using idx_orders_user_created</td><td>12 (only matching rows)</td><td>0.4 ms</td></tr></tbody></table></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Production Optimization</div>Indexes speed up reads but slow down writes (every INSERT/UPDATE must also update every index) and consume disk/memory. The rule of thumb: index columns used heavily in WHERE, JOIN, and ORDER BY — but audit and drop unused indexes regularly (they're pure overhead).</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Indexing every column "just in case" (kills write performance); putting the wrong column order in a composite index (order matters — it must match your most selective/most-filtered leading columns); expecting an index to help a query that wraps the column in a function without a matching expression index.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2489,6 +2633,13 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
     total <span class="tok-type">DECIMAL</span>(<span class="tok-num">10</span>,<span class="tok-num">2</span>) <span class="tok-kw">NOT NULL CHECK</span> (total &gt;= <span class="tok-num">0</span>)
 );</code></pre>
     </div>
+    <div class="code-block reveal">
+      <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — constraint in action</span><button class="copy-btn" data-copy="INSERT INTO orders (user_id, total) VALUES (1, -50);"><i class="fa-regular fa-copy"></i> Copy</button></div>
+      <pre><code><span class="tok-kw">INSERT INTO</span> orders (user_id, total) <span class="tok-kw">VALUES</span> (<span class="tok-num">1</span>, -<span class="tok-num">50</span>);</code></pre>
+    </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Result</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>Result</th></tr></thead>
+      <tbody><tr><td style="color:var(--danger)">ERROR: new row violates check constraint "orders_total_check" — insert rejected, total (-50) is below 0</td></tr></tbody></table></div>
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why It Exists</div>Application-level validation can be bypassed by bugs, migrations, or a rogue script. Database constraints are the last line of defense guaranteeing your data can never violate business rules, no matter what wrote it.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Relying only on app-level validation and skipping DB constraints entirely; using <code class="inline">ON DELETE CASCADE</code> without fully understanding the blast radius of a parent-row delete.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2625,6 +2776,12 @@ footer.site-footer p{ color:var(--muted); font-size:13px; margin-top:10px; }
 <span class="tok-kw">COMMIT</span>;
 <span class="tok-com">-- or: ROLLBACK; / ROLLBACK TO before_fee;</span></code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: accounts</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>balance</th></tr></thead>
+      <tbody><tr><td>1</td><td>500</td></tr><tr><td>2</td><td>200</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After COMMIT (transfer of 100 + 2 fee, both succeed atomically)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>balance</th></tr></thead>
+      <tbody><tr><td>1</td><td>398</td></tr><tr><td>2</td><td>300</td></tr></tbody></table></div>
     <div class="table-wrap reveal">
       <table class="data-table compare">
         <thead><tr><th>Isolation Level</th><th>Dirty Read</th><th>Non-Repeatable Read</th><th>Phantom Read</th></tr></thead>
@@ -2690,6 +2847,14 @@ $$;
 
 <span class="tok-kw">CALL</span> process_refund(<span class="tok-num">1042</span>, <span class="tok-num">49.99</span>);</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: orders</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>status</th></tr></thead><tbody><tr><td>1042</td><td>paid</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After CALL: orders + new row in refunds</div>
+    <div class="query-flow reveal">
+      <div class="table-wrap"><table class="data-table output"><thead><tr><th>id</th><th>status</th></tr></thead><tbody><tr><td>1042</td><td>refunded</td></tr></tbody></table></div>
+      <div class="flow-arrow"><i class="fa-solid fa-plus"></i></div>
+      <div class="table-wrap"><table class="data-table output"><thead><tr><th>order_id</th><th>amount</th></tr></thead><tbody><tr><td>1042</td><td>49.99</td></tr></tbody></table></div>
+    </div>
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why It Exists</div>Stored procedures move business logic close to the data, reducing network round-trips for multi-step operations and letting DBAs enforce logic centrally rather than trusting every client application to do it right.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Putting too much business logic in the database, making it hard to test/version like application code; forgetting stored procedures bypass application-layer caching and audit logging unless explicitly designed for it.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2729,6 +2894,12 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 
 <span class="tok-kw">SELECT</span> name, price, calculate_tax(price) <span class="tok-kw">AS</span> tax <span class="tok-kw">FROM</span> products;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>name</th><th>price</th></tr></thead>
+      <tbody><tr><td>Keyboard</td><td>100.00</td></tr><tr><td>Mouse</td><td>50.00</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>name</th><th>price</th><th>tax</th></tr></thead>
+      <tbody><tr><td>Keyboard</td><td>100.00</td><td>8.00</td></tr><tr><td>Mouse</td><td>50.00</td><td>4.00</td></tr></tbody></table></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>Scalar UDFs called per-row can be dramatically slower than an equivalent inline expression because many engines can't inline/optimize across the function boundary. Prefer <code class="inline">STRICT</code>/<code class="inline">IMMUTABLE</code> markers where applicable so the optimizer can cache/reason about results.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
     <div class="quiz-card reveal" data-quiz><div class="quiz-q">Where can a scalar SQL function typically be used that a stored procedure cannot?</div><div class="quiz-opts">
@@ -2770,6 +2941,18 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 <span class="tok-kw">AFTER UPDATE ON</span> products
 <span class="tok-kw">FOR EACH ROW EXECUTE FUNCTION</span> log_price_change();</code></pre>
     </div>
+    <div class="code-block reveal">
+      <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — the UPDATE that fires it</span><button class="copy-btn" data-copy="UPDATE products SET price = 95.00 WHERE id = 7;"><i class="fa-regular fa-copy"></i> Copy</button></div>
+      <pre><code><span class="tok-kw">UPDATE</span> products <span class="tok-kw">SET</span> price = <span class="tok-num">95.00</span> <span class="tok-kw">WHERE</span> id = <span class="tok-num">7</span>;</code></pre>
+    </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Before: products</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>price</th></tr></thead><tbody><tr><td>7</td><td>89.99</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> After: products + auto-inserted row in price_audit</div>
+    <div class="query-flow reveal">
+      <div class="table-wrap"><table class="data-table output"><thead><tr><th>id</th><th>price</th></tr></thead><tbody><tr><td>7</td><td>95.00</td></tr></tbody></table></div>
+      <div class="flow-arrow"><i class="fa-solid fa-plus"></i></div>
+      <div class="table-wrap"><table class="data-table output"><thead><tr><th>product_id</th><th>old_price</th><th>new_price</th></tr></thead><tbody><tr><td>7</td><td>89.99</td><td>95.00</td></tr></tbody></table></div>
+    </div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Chains of triggers calling triggers, creating hard-to-debug cascades; hiding critical business logic in triggers where new engineers won't think to look; performance-heavy trigger logic silently slowing down every write.</div></div>
     <div class="callout best reveal"><i class="fa-solid fa-check callout-icon"></i><div><div class="callout-title">Best Practices</div>Reserve triggers for cross-cutting concerns like auditing/timestamps — keep core business logic in application code or explicit stored procedures where it's visible and testable.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2802,6 +2985,9 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 <span class="tok-kw">SELECT NEXTVAL</span>(<span class="tok-str">'seq_invoice_number'</span>);
 <span class="tok-kw">SELECT CURRVAL</span>(<span class="tok-str">'seq_invoice_number'</span>);</code></pre>
     </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>Call</th><th>Result</th></tr></thead>
+      <tbody><tr><td><code>NEXTVAL(...)</code> (1st call)</td><td>1000</td></tr><tr><td><code>NEXTVAL(...)</code> (2nd call)</td><td>1001</td></tr><tr><td><code>CURRVAL(...)</code></td><td>1001 (last value returned in this session)</td></tr></tbody></table></div>
     <div class="callout why reveal"><i class="fa-solid fa-lightbulb callout-icon"></i><div><div class="callout-title">Why It Exists</div><code class="inline">SERIAL</code>/<code class="inline">BIGSERIAL</code> in Postgres and <code class="inline">AUTO_INCREMENT</code> in MySQL are just convenient sugar built on top of sequence objects — understanding sequences directly matters when you need shared numbering (e.g., invoice numbers across multiple tables) or gaps-tolerant unique IDs.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Assuming sequence values are gap-free (a rolled-back transaction still "consumes" a sequence value — gaps are normal and expected); relying on sequence order as a proxy for creation-time ordering under high concurrency.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2842,6 +3028,11 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 
 <span class="tok-kw">CREATE INDEX</span> idx_events_payload <span class="tok-kw">ON</span> events <span class="tok-kw">USING GIN</span> (payload);</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: events</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>payload</th></tr></thead>
+      <tbody><tr><td>1</td><td><code>{"event_type":"purchase","user":{"id":42}}</code></td></tr><tr><td>2</td><td><code>{"event_type":"view","user":{"id":7}}</code></td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>event_type</th><th>user_id</th></tr></thead><tbody><tr><td>purchase</td><td>42</td></tr></tbody></table></div>
     <div class="table-wrap reveal">
       <table class="data-table compare"><thead><tr><th>Operator/Type</th><th>Meaning</th></tr></thead>
       <tbody><tr><td><code>-&gt;</code></td><td>Get JSON field as JSON</td></tr><tr><td><code>-&gt;&gt;</code></td><td>Get JSON field as text</td></tr><tr><td><code>@&gt;</code></td><td>Contains operator</td></tr><tr><td><code>JSON</code></td><td>Stores exact text, re-parses each access</td></tr><tr><td><code>JSONB</code></td><td>Stores binary/parsed form, indexable, faster</td></tr></tbody></table>
@@ -2884,6 +3075,12 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 )
 <span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> bom;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: parts</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>part_id</th><th>sub_part_id</th><th>quantity</th></tr></thead>
+      <tbody><tr><td>100</td><td>200</td><td>2</td></tr><tr><td>200</td><td>300</td><td>3</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (part 300 needed = 2 x 3 = 6 per unit of part 100)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>part_id</th><th>sub_part_id</th><th>quantity</th><th>level</th></tr></thead>
+      <tbody><tr><td>100</td><td>200</td><td>2</td><td>1</td></tr><tr><td>200</td><td>300</td><td>6</td><td>2</td></tr></tbody></table></div>
     <div class="callout company reveal"><i class="fa-solid fa-building-columns callout-icon"></i><div><div class="callout-title">Real Company Use Case</div>Manufacturing/e-commerce systems use recursive "bill of materials" queries like this to compute exactly how many raw sub-components are needed to build N units of a finished product, multiplying quantities down every level of the assembly tree.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
     <div class="quiz-card reveal" data-quiz><div class="quiz-q">Recursive CTEs are most appropriate for:</div><div class="quiz-opts">
@@ -2961,6 +3158,11 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
       <div class="code-header"><span class="code-lang"><span class="dots"><span></span><span></span><span></span></span>sql — PL/pgSQL EXECUTE with parameters</span><button class="copy-btn" data-copy="EXECUTE format('SELECT * FROM %I WHERE status = $1', table_name) USING p_status;"><i class="fa-regular fa-copy"></i> Copy</button></div>
       <pre><code><span class="tok-kw">EXECUTE</span> <span class="tok-fn">format</span>(<span class="tok-str">'SELECT * FROM %I WHERE status = $1'</span>, table_name) <span class="tok-kw">USING</span> p_status;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: table_name = 'orders', p_status = 'shipped'</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>status</th></tr></thead>
+      <tbody><tr><td>1</td><td>shipped</td></tr><tr><td>2</td><td>paid</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (query built at runtime as: SELECT * FROM orders WHERE status = 'shipped')</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>status</th></tr></thead><tbody><tr><td>1</td><td>shipped</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes — SQL Injection Risk</div>Concatenating raw user input directly into a dynamic SQL string is the #1 cause of SQL injection vulnerabilities. Never build dynamic SQL by string-concatenating untrusted values.</div></div>
     <div class="callout best reveal"><i class="fa-solid fa-check callout-icon"></i><div><div class="callout-title">Best Practices</div>Use parameterized placeholders (<code class="inline">USING</code>/bind variables) for values, and safe identifier-quoting functions (like Postgres's <code class="inline">%I</code>/<code class="inline">quote_ident</code>) only for dynamic table/column names — never trust either without escaping.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -2992,6 +3194,12 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
       <pre><code><span class="tok-kw">EXPLAIN ANALYZE</span>
 <span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> orders <span class="tok-kw">WHERE</span> user_id = <span class="tok-num">42</span> <span class="tok-kw">ORDER BY</span> created_at <span class="tok-kw">DESC LIMIT</span> <span class="tok-num">10</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: orders (simplified)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>user_id</th><th>created_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>42</td><td>2026-06-01</td></tr><tr><td>2</td><td>42</td><td>2026-06-15</td></tr><tr><td>3</td><td>7</td><td>2026-06-20</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (query result rows, plus the EXPLAIN plan below)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>user_id</th><th>created_at</th></tr></thead>
+      <tbody><tr><td>2</td><td>42</td><td>2026-06-15</td></tr><tr><td>1</td><td>42</td><td>2026-06-01</td></tr></tbody></table></div>
     <div class="diagram-box reveal">
       <svg width="560" height="180" viewBox="0 0 560 180">
         <g font-family="JetBrains Mono" font-size="11" fill="#F4F4F5">
@@ -3091,6 +3299,9 @@ $$ <span class="tok-kw">LANGUAGE</span> plpgsql;
 <span class="tok-kw">GRANT</span> analytics_readonly <span class="tok-kw">TO</span> jane;
 <span class="tok-kw">REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA</span> analytics <span class="tok-kw">FROM</span> jane;</code></pre>
     </div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Result: jane's effective privileges</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>user</th><th>role</th><th>SELECT</th><th>INSERT/UPDATE/DELETE</th></tr></thead>
+      <tbody><tr><td>jane</td><td>analytics_readonly</td><td>Allowed</td><td>Denied</td></tr></tbody></table></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">SQL Injection — The Classic Vulnerability</div>
       <div class="code-block" style="margin:10px 0 0;"><pre><code><span class="tok-com">-- VULNERABLE (string concatenation):</span>
 query = <span class="tok-str">"SELECT * FROM users WHERE email = '"</span> + userInput + <span class="tok-str">"'"</span>;
@@ -3169,6 +3380,12 @@ query = <span class="tok-str">"SELECT * FROM users WHERE email = '"</span> + use
 <span class="tok-kw">CREATE TABLE</span> events_2026_01 <span class="tok-kw">PARTITION OF</span> events
     <span class="tok-kw">FOR VALUES FROM</span> (<span class="tok-str">'2026-01-01'</span>) <span class="tok-kw">TO</span> (<span class="tok-str">'2026-02-01'</span>);</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: rows inserted into events (logical parent table)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>created_at</th></tr></thead>
+      <tbody><tr><td>1</td><td>2026-01-15</td></tr><tr><td>2</td><td>2026-02-03</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output: physical routing (transparent to queries)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>created_at</th><th>physical partition</th></tr></thead>
+      <tbody><tr><td>1</td><td>2026-01-15</td><td>events_2026_01</td></tr><tr><td>2</td><td>2026-02-03</td><td>events_2026_02 (a separate partition)</td></tr></tbody></table></div>
     <div class="callout company reveal"><i class="fa-solid fa-building-columns callout-icon"></i><div><div class="callout-title">Real Company Use Case</div>Companies like Instagram famously sharded their Postgres user data by user ID ranges across thousands of logical shards early on to scale past a single server's write capacity — a widely cited case study in horizontal scaling.</div></div>
     <div class="callout mistake reveal"><i class="fa-solid fa-xmark callout-icon"></i><div><div class="callout-title">Common Mistakes</div>Choosing a shard key that creates hot spots (e.g., sharding by signup date when most traffic is recent); never testing your actual backup restore process (a backup you've never restored is not a real backup).</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -3278,6 +3495,12 @@ query = <span class="tok-str">"SELECT * FROM users WHERE email = '"</span> + use
 <span class="tok-kw">FROM</span> {{ ref(<span class="tok-str">'stg_orders'</span>) }}
 <span class="tok-kw">GROUP BY</span> <span class="tok-num">1</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: stg_orders (raw, already loaded — the "L" in ELT)</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>created_at</th><th>total</th></tr></thead>
+      <tbody><tr><td>2026-07-01 10:00</td><td>50</td></tr><tr><td>2026-07-01 14:00</td><td>75</td></tr><tr><td>2026-07-02 09:00</td><td>40</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output: fct_daily_revenue (the "T" — transformed in-warehouse)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>day</th><th>revenue</th><th>order_count</th></tr></thead>
+      <tbody><tr><td>2026-07-01</td><td>125</td><td>2</td></tr><tr><td>2026-07-02</td><td>40</td><td>1</td></tr></tbody></table></div>
     <div class="callout company reveal"><i class="fa-solid fa-building-columns callout-icon"></i><div><div class="callout-title">Real Company Use Case</div>Modern data teams (using tools like dbt, Airflow, Fivetran) increasingly do transformation entirely in SQL inside the warehouse (ELT) rather than in separate ETL scripts — Spotify and Airbnb are well-known for large-scale SQL-centric analytics engineering practices built this way.</div></div>
     <div class="callout perf reveal"><i class="fa-solid fa-bolt callout-icon"></i><div><div class="callout-title">Performance Notes</div>Columnar storage engines (Parquet, BigQuery, Redshift, Snowflake) scan only the columns referenced in your query, which is why <code class="inline">SELECT specific_columns</code> matters even more in OLAP than in OLTP.</div></div>
     <div class="subhead reveal"><i class="fa-solid fa-circle-question ic-primary"></i> Quiz</div>
@@ -3321,6 +3544,12 @@ query = <span class="tok-str">"SELECT * FROM users WHERE email = '"</span> + use
 <span class="tok-kw">ORDER BY</span> embedding &lt;-&gt; <span class="tok-str">'[0.012, -0.045, ...]'</span>  <span class="tok-com">-- vector similarity (hybrid search)</span>
 <span class="tok-kw">LIMIT</span> <span class="tok-num">5</span>;</code></pre>
     </div>
+    <div class="table-caption in reveal"><i class="fa-solid fa-table"></i> Input: documents</div>
+    <div class="table-wrap reveal"><table class="data-table"><thead><tr><th>id</th><th>content</th><th>metadata</th><th>embedding (truncated)</th></tr></thead>
+      <tbody><tr><td>1</td><td>"SQL indexes explained..."</td><td><code>{"category":"sql-docs"}</code></td><td>[0.011,-0.044,...]</td></tr>
+      <tr><td>2</td><td>"Company holiday policy..."</td><td><code>{"category":"hr-docs"}</code></td><td>[0.51,0.22,...]</td></tr></tbody></table></div>
+    <div class="table-caption out reveal"><i class="fa-solid fa-circle-check"></i> Output (metadata filter excludes doc 2; doc 1 is closest by vector distance)</div>
+    <div class="table-wrap reveal"><table class="data-table output"><thead><tr><th>id</th><th>content</th></tr></thead><tbody><tr><td>1</td><td>"SQL indexes explained..."</td></tr></tbody></table></div>
     <div class="table-wrap reveal">
       <table class="data-table">
         <thead><tr><th>Concept</th><th>Meaning</th></tr></thead>
